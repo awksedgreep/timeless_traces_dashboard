@@ -69,13 +69,7 @@ defmodule SpanStreamDashboard.Page do
       trace_id={@trace_id}
     />
     <.stats_tab :if={@nav == "stats"} stats={@stats} />
-    <.tail_tab
-      :if={@nav == "tail"}
-      entries={@tail_entries}
-      subscribed={@subscribed}
-      page={@page}
-      socket={@socket}
-    />
+    <.tail_tab :if={@nav == "tail"} entries={@tail_entries} subscribed={@subscribed} />
     """
   end
 
