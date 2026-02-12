@@ -1,0 +1,11 @@
+/_build/
+/cover/
+/deps/
+/doc/
+/.fetch
+erl_crash.dump
+*.ez
+*.beam
+span_stream_dashboard-*.tar
+/tmp/
+/priv/span_stream/
