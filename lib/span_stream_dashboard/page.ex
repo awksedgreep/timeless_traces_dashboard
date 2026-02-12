@@ -126,6 +126,9 @@ defmodule SpanStreamDashboard.Page do
     trace_id = Map.get(params, "trace_id", "")
 
     if trace_id != "" do
+      # Flush buffer so recently-arrived spans (e.g. from Live Tail) are indexed
+      SpanStream.flush()
+
       case SpanStream.trace(trace_id) do
         {:ok, spans} ->
           assign(socket, trace_spans: spans, trace_id_input: trace_id, trace_id: trace_id)
