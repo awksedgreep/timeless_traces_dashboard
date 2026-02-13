@@ -1,4 +1,4 @@
-defmodule SpanStreamDashboard do
+defmodule TimelessTracesDashboard do
   @moduledoc """
   Phoenix LiveDashboard page for browsing OpenTelemetry spans stored by TimelessTraces.
 
@@ -8,7 +8,7 @@ defmodule SpanStreamDashboard do
 
       live_dashboard "/dashboard",
         additional_pages: [
-          spans: SpanStreamDashboard.Page
+          spans: TimelessTracesDashboard.Page
         ]
 
   ## Tabs

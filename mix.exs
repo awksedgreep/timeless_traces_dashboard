@@ -1,12 +1,12 @@
-defmodule SpanStreamDashboard.MixProject do
+defmodule TimelessTracesDashboard.MixProject do
   use Mix.Project
 
   @version "0.1.0"
-  @source_url "https://github.com/awksedgreep/span_stream_dashboard"
+  @source_url "https://github.com/awksedgreep/timeless_traces_dashboard"
 
   def project do
     [
-      app: :span_stream_dashboard,
+      app: :timeless_traces_dashboard,
       version: @version,
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,

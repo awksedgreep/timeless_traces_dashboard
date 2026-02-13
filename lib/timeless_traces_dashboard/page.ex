@@ -1,8 +1,8 @@
-defmodule SpanStreamDashboard.Page do
+defmodule TimelessTracesDashboard.Page do
   @moduledoc false
   use Phoenix.LiveDashboard.PageBuilder, refresher?: false
 
-  import SpanStreamDashboard.Components
+  import TimelessTracesDashboard.Components
 
   @tail_cap 200
 

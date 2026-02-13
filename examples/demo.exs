@@ -1,4 +1,4 @@
-# Minimal Phoenix app to demo SpanStreamDashboard.
+# Minimal Phoenix app to demo TimelessTracesDashboard.
 #
 # Run:  mix run examples/demo.exs
 # Open: http://localhost:4050/dashboard/spans
@@ -27,14 +27,14 @@ defmodule Demo.Router do
 
     live_dashboard("/dashboard",
       additional_pages: [
-        spans: SpanStreamDashboard.Page
+        spans: TimelessTracesDashboard.Page
       ]
     )
   end
 end
 
 defmodule Demo.Endpoint do
-  use Phoenix.Endpoint, otp_app: :span_stream_dashboard
+  use Phoenix.Endpoint, otp_app: :timeless_traces_dashboard
 
   @session_options [
     store: :cookie,
@@ -55,7 +55,7 @@ end
 Application.put_env(:phoenix, :json_library, Jason)
 
 # Configure endpoint
-Application.put_env(:span_stream_dashboard, Demo.Endpoint,
+Application.put_env(:timeless_traces_dashboard, Demo.Endpoint,
   adapter: Bandit.PhoenixAdapter,
   http: [port: 4050],
   url: [host: "localhost"],
@@ -96,7 +96,7 @@ Application.put_env(:timeless_traces, :compaction_max_raw_age, 30)
 IO.puts("""
 
 ========================================
-  SpanStreamDashboard Demo
+  TimelessTracesDashboard Demo
   http://localhost:4050/dashboard/spans
 ========================================
 

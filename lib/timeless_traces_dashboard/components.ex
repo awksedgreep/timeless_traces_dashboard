@@ -1,4 +1,4 @@
-defmodule SpanStreamDashboard.Components do
+defmodule TimelessTracesDashboard.Components do
   @moduledoc false
   use Phoenix.Component
 
