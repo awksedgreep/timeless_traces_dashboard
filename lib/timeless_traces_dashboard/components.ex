@@ -130,7 +130,7 @@ defmodule TimelessTracesDashboard.Components do
     assigns = assign(assigns, :trace_id, trace_id)
 
     ~H"""
-    <tr>
+    <tr phx-click="lookup_trace" phx-value-trace_id={@trace_id} style="cursor: pointer;">
       <td class="text-monospace" style="font-size: 0.8rem;">
         {format_timestamp(@span.start_time)}
       </td>
@@ -145,15 +145,8 @@ defmodule TimelessTracesDashboard.Components do
       <td class="text-monospace" style="font-size: 0.8rem;">
         {format_duration(@span.duration_ns)}
       </td>
-      <td style="font-size: 0.75rem; font-family: monospace;" title={@trace_id}>
-        <a
-          href="#"
-          phx-click="lookup_trace"
-          phx-value-trace_id={@trace_id}
-          style="text-decoration: none; cursor: pointer;"
-        >
-          {String.slice(@trace_id, 0..11)}<span class="text-muted">...</span>
-        </a>
+      <td class="text-monospace" style="font-size: 0.75rem;" title={@trace_id}>
+        {String.slice(@trace_id, 0..11)}<span class="text-muted">...</span>
       </td>
     </tr>
     """
@@ -272,6 +265,7 @@ defmodule TimelessTracesDashboard.Components do
   attr(:trace_id_input, :string, required: true)
   attr(:trace_id, :any, required: true)
   attr(:lookup_us, :any, default: nil)
+  attr(:expanded_spans, :any, default: MapSet.new())
 
   def trace_tab(assigns) do
     assigns =
@@ -366,44 +360,55 @@ defmodule TimelessTracesDashboard.Components do
             </div>
           </div>
           <%!-- Span rows --%>
-          <div :for={{span, depth} <- @tree_rows} class="waterfall-row d-flex border-bottom"
-               style={"font-size: 0.8rem; #{if span.status == :error, do: "background: #fff5f5;", else: ""}"}>
-            <%!-- Left panel: service + name --%>
-            <div style={"width: 38%; min-width: 280px; padding: 6px 12px; padding-left: #{12 + depth * 16}px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;"}>
-              <span
-                :if={depth > 0}
-                class="text-muted me-1"
-                style="font-size: 0.7rem;"
-              >&#x2514;</span>
-              <span
-                style={"color: #{Map.get(@service_colors, get_service(span), "#888")}; font-weight: 600; font-size: 0.75rem;"}
-              >{get_service(span)}</span>
-              <span class="text-muted mx-1" style="font-size: 0.65rem;">&#x25B8;</span>
-              <span title={span.name}>{span.name}</span>
-              <.status_dot status={span.status} />
-            </div>
-            <%!-- Right panel: waterfall bar --%>
-            <div class="flex-grow-1 position-relative" style="padding: 4px 8px;">
-              <% offset_pct = (span.start_time - @trace_start) / @trace_dur * 100 %>
-              <% width_pct = max(0.3, span.duration_ns / @trace_dur * 100) %>
-              <div
-                style={"position: absolute; top: 5px; bottom: 5px; left: #{offset_pct}%; width: #{width_pct}%; background: #{Map.get(@service_colors, get_service(span), "#888")}; border-radius: 3px; min-width: 2px; opacity: 0.85;"}
-                title={"#{span.name} — #{format_duration(span.duration_ns)}"}
-              >
+          <div :for={{span, depth} <- @tree_rows}>
+            <div
+              class="waterfall-row d-flex border-bottom"
+              style={"font-size: 0.8rem; cursor: pointer; #{if span.status == :error, do: "background: #fff5f5;", else: ""}"}
+              phx-click="toggle_span_detail"
+              phx-value-span_id={span.span_id}
+            >
+              <%!-- Left panel: service + name --%>
+              <div style={"width: 38%; min-width: 280px; padding: 6px 12px; padding-left: #{12 + depth * 16}px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;"}>
                 <span
-                  :if={width_pct > 8}
-                  style="position: absolute; left: 4px; top: 50%; transform: translateY(-50%); font-size: 0.65rem; color: #fff; font-weight: 600; white-space: nowrap;"
+                  :if={depth > 0}
+                  class="text-muted me-1"
+                  style="font-size: 0.7rem;"
+                >&#x2514;</span>
+                <span
+                  style={"color: #{Map.get(@service_colors, get_service(span), "#888")}; font-weight: 600; font-size: 0.75rem;"}
+                >{get_service(span)}</span>
+                <span class="text-muted mx-1" style="font-size: 0.65rem;">&#x25B8;</span>
+                <span title={span.name}>{span.name}</span>
+                <.status_dot status={span.status} />
+              </div>
+              <%!-- Right panel: waterfall bar --%>
+              <div class="flex-grow-1 position-relative" style="padding: 4px 8px;">
+                <% offset_pct = (span.start_time - @trace_start) / @trace_dur * 100 %>
+                <% width_pct = max(0.3, span.duration_ns / @trace_dur * 100) %>
+                <div
+                  style={"position: absolute; top: 5px; bottom: 5px; left: #{offset_pct}%; width: #{width_pct}%; background: #{Map.get(@service_colors, get_service(span), "#888")}; border-radius: 3px; min-width: 2px; opacity: 0.85;"}
+                  title={"#{span.name} — #{format_duration(span.duration_ns)}"}
+                >
+                  <span
+                    :if={width_pct > 8}
+                    style="position: absolute; left: 4px; top: 50%; transform: translateY(-50%); font-size: 0.65rem; color: #fff; font-weight: 600; white-space: nowrap;"
+                  >
+                    {format_duration(span.duration_ns)}
+                  </span>
+                </div>
+                <span
+                  :if={width_pct <= 8}
+                  style={"position: absolute; top: 50%; transform: translateY(-50%); left: #{offset_pct + width_pct + 0.5}%; font-size: 0.65rem; color: #666; white-space: nowrap;"}
                 >
                   {format_duration(span.duration_ns)}
                 </span>
               </div>
-              <span
-                :if={width_pct <= 8}
-                style={"position: absolute; top: 50%; transform: translateY(-50%); left: #{offset_pct + width_pct + 0.5}%; font-size: 0.65rem; color: #666; white-space: nowrap;"}
-              >
-                {format_duration(span.duration_ns)}
-              </span>
             </div>
+            <.span_detail
+              :if={MapSet.member?(@expanded_spans, span.span_id)}
+              span={span}
+              service_color={Map.get(@service_colors, get_service(span), "#888")}
+            />
           </div>
           <%!-- Empty state within card (shouldn't happen but just in case) --%>
         </div>
@@ -443,6 +448,142 @@ defmodule TimelessTracesDashboard.Components do
     </span>
     """
   end
+
+  # --- Span detail panel ---
+
+  attr(:span, :any, required: true)
+  attr(:service_color, :string, required: true)
+
+  defp span_detail(assigns) do
+    attrs = (assigns.span.attributes || %{}) |> Map.delete("service.name") |> Enum.sort()
+    resource = (assigns.span.resource || %{}) |> Map.delete("service.name") |> Enum.sort()
+
+    events =
+      (assigns.span.events || [])
+      |> Enum.map(&normalize_event/1)
+
+    scope = Map.get(assigns.span, :instrumentation_scope) || Map.get(assigns.span, :scope)
+
+    assigns =
+      assigns
+      |> assign(:attrs, attrs)
+      |> assign(:resource, resource)
+      |> assign(:events, events)
+      |> assign(:scope, scope)
+
+    ~H"""
+    <div
+      class="border-bottom"
+      style={"padding: 10px 16px 10px 20px; background: #f8f9fa; border-left: 3px solid #{@service_color}; font-size: 0.8rem;"}
+    >
+      <%!-- Header: IDs + status message --%>
+      <div class="d-flex flex-wrap mb-2" style="gap: 0.5rem 1.5rem;">
+        <div>
+          <small class="text-muted">Span ID</small><br />
+          <code style="font-size: 0.75rem;">{@span.span_id}</code>
+        </div>
+        <div :if={@span.parent_span_id}>
+          <small class="text-muted">Parent Span ID</small><br />
+          <code style="font-size: 0.75rem;">{@span.parent_span_id}</code>
+        </div>
+        <div :if={status_message(@span)}>
+          <small class="text-muted">Status</small><br />
+          <span class="text-danger" style="font-size: 0.8rem;">{status_message(@span)}</span>
+        </div>
+      </div>
+
+      <%!-- Attributes --%>
+      <div :if={@attrs != []}>
+        <small class="text-muted fw-semibold">Attributes</small>
+        <table class="table table-sm table-bordered mb-2" style="font-size: 0.75rem; background: #fff;">
+          <tbody>
+            <tr :for={{k, v} <- @attrs}>
+              <td style="width: 30%; font-weight: 500; word-break: break-all;">{k}</td>
+              <td style="font-family: monospace; word-break: break-all;" title={inspect(v)}>
+                {format_attr_value(v)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <%!-- Resource --%>
+      <div :if={@resource != []}>
+        <small class="text-muted fw-semibold">Resource</small>
+        <table class="table table-sm table-bordered mb-2" style="font-size: 0.75rem; background: #fff;">
+          <tbody>
+            <tr :for={{k, v} <- @resource}>
+              <td style="width: 30%; font-weight: 500; word-break: break-all;">{k}</td>
+              <td style="font-family: monospace; word-break: break-all;" title={inspect(v)}>
+                {format_attr_value(v)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <%!-- Events --%>
+      <div :if={@events != []}>
+        <small class="text-muted fw-semibold">Events</small>
+        <div :for={event <- @events} class="card mb-1" style="font-size: 0.75rem;">
+          <div class="card-body p-2">
+            <div class="d-flex justify-content-between mb-1">
+              <span class="fw-semibold">{event.name}</span>
+              <small class="text-muted">{format_timestamp(event.timestamp)}</small>
+            </div>
+            <table
+              :if={event.attributes != nil and event.attributes != %{} and event.attributes != []}
+              class="table table-sm table-bordered mb-0"
+              style="font-size: 0.7rem; background: #fff;"
+            >
+              <tbody>
+                <tr :for={{k, v} <- Enum.sort(to_map(event.attributes))}>
+                  <td style="width: 30%; font-weight: 500; word-break: break-all;">{k}</td>
+                  <td style="font-family: monospace; word-break: break-all; white-space: pre-wrap;" title={inspect(v)}>
+                    {format_attr_value(v)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <%!-- Instrumentation Scope --%>
+      <div :if={@scope} class="mt-1">
+        <small class="text-muted fw-semibold">Instrumentation Scope</small>
+        <div style="font-size: 0.75rem;">
+          <span>{scope_name(@scope)}</span>
+          <small :if={scope_version(@scope)} class="text-muted ms-1">v{scope_version(@scope)}</small>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp normalize_event({:event, name, ts, attrs}), do: %{name: name, timestamp: ts, attributes: attrs}
+  defp normalize_event(%{} = event), do: event
+  defp normalize_event(_), do: %{name: "unknown", timestamp: nil, attributes: %{}}
+
+  defp status_message(span) do
+    msg = Map.get(span, :status_message) || Map.get(span, :message)
+    if msg && msg != "", do: msg, else: nil
+  end
+
+  defp format_attr_value(v) when is_binary(v), do: v
+  defp format_attr_value(v), do: inspect(v)
+
+  defp to_map(attrs) when is_map(attrs), do: attrs
+  defp to_map(attrs) when is_list(attrs), do: Map.new(attrs)
+  defp to_map(_), do: %{}
+
+  defp scope_name(%{name: name}), do: name
+  defp scope_name(scope) when is_map(scope), do: Map.get(scope, :name) || Map.get(scope, "name") || "unknown"
+  defp scope_name(_), do: "unknown"
+
+  defp scope_version(%{version: v}) when v != nil and v != "", do: v
+  defp scope_version(scope) when is_map(scope), do: Map.get(scope, :version) || Map.get(scope, "version")
+  defp scope_version(_), do: nil
 
   # Build a tree of spans from parent_span_id relationships
   defp build_span_tree(spans) do
@@ -525,10 +666,12 @@ defmodule TimelessTracesDashboard.Components do
         <div class="card">
           <div class="card-body text-center">
             <h6 class="card-subtitle text-muted mb-1">Compressed Blocks</h6>
+            <% compressed_blocks = @stats.zstd_blocks + Map.get(@stats, :openzl_blocks, 0) %>
+            <% compressed_bytes = @stats.zstd_bytes + Map.get(@stats, :openzl_bytes, 0) %>
             <h4 class="mb-0">
-              {@stats.zstd_blocks}
+              {compressed_blocks}
               <small class="text-muted" style="font-size: 0.6em;">
-                ({format_bytes(@stats.zstd_bytes)})
+                ({format_bytes(compressed_bytes)})
               </small>
             </h4>
           </div>
@@ -538,15 +681,18 @@ defmodule TimelessTracesDashboard.Components do
         <div class="card">
           <div class="card-body text-center">
             <h6 class="card-subtitle text-muted mb-1">Compression Ratio</h6>
+            <% compressed_blocks = @stats.zstd_blocks + Map.get(@stats, :openzl_blocks, 0) %>
+            <% compressed_bytes = @stats.zstd_bytes + Map.get(@stats, :openzl_bytes, 0) %>
+            <% compressed_entries = @stats.zstd_entries + Map.get(@stats, :openzl_entries, 0) %>
             <h4 class="mb-0">
-              {if @stats.zstd_entries > 0 and @stats.raw_entries > 0 do
+              {if compressed_entries > 0 and @stats.raw_entries > 0 do
                 raw_per = @stats.raw_bytes / @stats.raw_entries
-                zstd_per = @stats.zstd_bytes / @stats.zstd_entries
-                ratio = raw_per / zstd_per
+                comp_per = compressed_bytes / compressed_entries
+                ratio = raw_per / comp_per
                 pct = Float.round((1 - 1 / ratio) * 100, 1)
                 "#{Float.round(ratio, 1)}x (#{pct}%)"
               else
-                if @stats.zstd_blocks > 0, do: "compressed", else: "pending"
+                if compressed_blocks > 0, do: "compressed", else: "pending"
               end}
             </h4>
           </div>
