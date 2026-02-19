@@ -8,7 +8,7 @@ defmodule TimelessTracesDashboard.Page do
 
   @impl true
   def menu_link(_, _) do
-    {:ok, "Spans"}
+    {:ok, "TimelessTraces"}
   end
 
   @impl true
@@ -22,6 +22,7 @@ defmodule TimelessTracesDashboard.Page do
        trace_id_input: "",
        trace_id: nil,
        trace_lookup_us: nil,
+       expanded_spans: MapSet.new(),
        tail_entries: [],
        subscribed: false,
        search: "",
@@ -69,6 +70,7 @@ defmodule TimelessTracesDashboard.Page do
       trace_id_input={@trace_id_input}
       trace_id={@trace_id}
       lookup_us={@trace_lookup_us}
+      expanded_spans={@expanded_spans}
     />
     <.stats_tab :if={@nav == "stats"} stats={@stats} />
     <.tail_tab :if={@nav == "tail"} entries={@tail_entries} subscribed={@subscribed} />
@@ -221,6 +223,17 @@ defmodule TimelessTracesDashboard.Page do
     params = %{nav: "traces", trace_id: trace_id}
     to = live_dashboard_path(socket, socket.assigns.page, params)
     {:noreply, push_patch(socket, to: to)}
+  end
+
+  def handle_event("toggle_span_detail", %{"span_id" => span_id}, socket) do
+    expanded = socket.assigns.expanded_spans
+
+    expanded =
+      if MapSet.member?(expanded, span_id),
+        do: MapSet.delete(expanded, span_id),
+        else: MapSet.put(expanded, span_id)
+
+    {:noreply, assign(socket, :expanded_spans, expanded)}
   end
 
   def handle_event("toggle_tail", _, socket) do
