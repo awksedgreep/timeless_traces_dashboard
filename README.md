@@ -72,6 +72,43 @@ live_dashboard "/dashboard",
 
 Navigate to `/dashboard/traces` in your browser.
 
+## Existing OpenTelemetry Exporter
+
+OpenTelemetry's `:traces_exporter` config only supports a **single exporter**. If you already export traces to an external system (Jaeger, Tempo, Datadog, etc.), setting `traces_exporter: {TimelessTraces.Exporter, []}` will **replace** your existing exporter and traces will stop flowing to that system.
+
+If you need traces sent to both TimelessTraces and an external collector, you'll need a thin fan-out exporter that calls both. For example:
+
+```elixir
+defmodule MyApp.CompositeExporter do
+  @behaviour :otel_exporter_traces
+
+  @impl true
+  def init(_config) do
+    {:ok, otel_state} = :otel_exporter_otlp.init(%{})
+    {:ok, timeless_state} = TimelessTraces.Exporter.init(%{})
+    {:ok, %{otlp: otel_state, timeless: timeless_state}}
+  end
+
+  @impl true
+  def export(tab, resource, state) do
+    :otel_exporter_otlp.export(tab, resource, state.otlp)
+    TimelessTraces.Exporter.export(tab, resource, state.timeless)
+    {:ok, state}
+  end
+
+  @impl true
+  def shutdown(state) do
+    :otel_exporter_otlp.shutdown(state.otlp)
+    TimelessTraces.Exporter.shutdown(state.timeless)
+    :ok
+  end
+end
+```
+
+Then configure: `config :opentelemetry, traces_exporter: {MyApp.CompositeExporter, []}`
+
+This does not apply to metrics or logs -- the metrics Reporter uses `:telemetry` (which supports multiple handlers) and TimelessLogs registers as a Logger handler (which coexists with other handlers).
+
 ## Requirements
 
 - [TimelessTraces](https://github.com/awksedgreep/timeless_traces) must be running in your application
