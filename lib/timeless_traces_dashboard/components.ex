@@ -680,20 +680,37 @@ defmodule TimelessTracesDashboard.Components do
       <div class="col-sm-4 mb-3">
         <div class="card">
           <div class="card-body text-center">
-            <h6 class="card-subtitle text-muted mb-1">Compression Ratio</h6>
-            <% compressed_blocks = @stats.zstd_blocks + Map.get(@stats, :openzl_blocks, 0) %>
-            <% compressed_bytes = @stats.zstd_bytes + Map.get(@stats, :openzl_bytes, 0) %>
-            <% compressed_entries = @stats.zstd_entries + Map.get(@stats, :openzl_entries, 0) %>
+            <h6 class="card-subtitle text-muted mb-1">Data Compression</h6>
             <h4 class="mb-0">
-              {if compressed_entries > 0 and @stats.raw_entries > 0 do
-                raw_per = @stats.raw_bytes / @stats.raw_entries
-                comp_per = compressed_bytes / compressed_entries
-                ratio = raw_per / comp_per
+              {if Map.get(@stats, :compression_raw_bytes_in, 0) > 0 and
+                    Map.get(@stats, :compression_compressed_bytes_out, 0) > 0 do
+                ratio = @stats.compression_raw_bytes_in / @stats.compression_compressed_bytes_out
                 pct = Float.round((1 - 1 / ratio) * 100, 1)
                 "#{Float.round(ratio, 1)}x (#{pct}%)"
               else
-                if compressed_blocks > 0, do: "compressed", else: "pending"
+                if Map.get(@stats, :compaction_count, 0) > 0, do: "1.0x (0%)", else: "pending"
               end}
+            </h4>
+          </div>
+        </div>
+      </div>
+      <div class="col-sm-4 mb-3">
+        <div class="card">
+          <div class="card-body text-center">
+            <h6 class="card-subtitle text-muted mb-1">Compression w/ Overhead</h6>
+            <h4 class="mb-0">
+              {
+                raw_in = Map.get(@stats, :compression_raw_bytes_in, 0) + @stats.raw_bytes
+                total_disk = @stats.total_bytes + @stats.index_size
+
+                if raw_in > 0 and total_disk > 0 do
+                  ratio = raw_in / total_disk
+                  pct = Float.round((1 - 1 / ratio) * 100, 1)
+                  "#{Float.round(ratio, 1)}x (#{pct}%)"
+                else
+                  if Map.get(@stats, :compaction_count, 0) > 0, do: "1.0x (0%)", else: "pending"
+                end
+              }
             </h4>
           </div>
         </div>
