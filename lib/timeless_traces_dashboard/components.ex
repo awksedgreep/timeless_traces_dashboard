@@ -266,6 +266,8 @@ defmodule TimelessTracesDashboard.Components do
   attr(:trace_id, :any, required: true)
   attr(:lookup_us, :any, default: nil)
   attr(:expanded_spans, :any, default: MapSet.new())
+  attr(:page, :any, default: nil)
+  attr(:socket, :any, default: nil)
 
   def trace_tab(assigns) do
     assigns =
@@ -408,6 +410,9 @@ defmodule TimelessTracesDashboard.Components do
               :if={MapSet.member?(@expanded_spans, span.span_id)}
               span={span}
               service_color={Map.get(@service_colors, get_service(span), "#888")}
+              trace_id={@trace_id}
+              page={@page}
+              socket={@socket}
             />
           </div>
           <%!-- Empty state within card (shouldn't happen but just in case) --%>
@@ -453,6 +458,9 @@ defmodule TimelessTracesDashboard.Components do
 
   attr(:span, :any, required: true)
   attr(:service_color, :string, required: true)
+  attr(:trace_id, :any, default: nil)
+  attr(:page, :any, default: nil)
+  attr(:socket, :any, default: nil)
 
   defp span_detail(assigns) do
     attrs = (assigns.span.attributes || %{}) |> Map.delete("service.name") |> Enum.sort()
@@ -464,12 +472,25 @@ defmodule TimelessTracesDashboard.Components do
 
     scope = Map.get(assigns.span, :instrumentation_scope) || Map.get(assigns.span, :scope)
 
+    logs_link =
+      if assigns.trace_id && assigns.socket && assigns.page do
+        # Convert nanosecond span times to seconds for log filtering
+        since = div(assigns.span.start_time, 1_000_000_000)
+        until_s = div(assigns.span.end_time, 1_000_000_000) + 1
+
+        Phoenix.LiveDashboard.PageBuilder.live_dashboard_path(
+          assigns.socket, :logs, assigns.page.node, %{},
+          %{"trace_id" => to_string(assigns.trace_id), "since" => to_string(since), "until" => to_string(until_s)}
+        )
+      end
+
     assigns =
       assigns
       |> assign(:attrs, attrs)
       |> assign(:resource, resource)
       |> assign(:events, events)
       |> assign(:scope, scope)
+      |> assign(:logs_link, logs_link)
 
     ~H"""
     <div
@@ -556,6 +577,16 @@ defmodule TimelessTracesDashboard.Components do
           <span>{scope_name(@scope)}</span>
           <small :if={scope_version(@scope)} class="text-muted ms-1">v{scope_version(@scope)}</small>
         </div>
+      </div>
+
+      <%!-- Cross-signal links --%>
+      <div :if={@logs_link} class="mt-2">
+        <a
+          href={@logs_link}
+          style="display: inline-block; padding: 3px 10px; background: #fff; color: #2563eb; border: 1px solid #2563eb; border-radius: 4px; font-size: 0.75rem; text-decoration: none;"
+        >
+          View Logs
+        </a>
       </div>
     </div>
     """

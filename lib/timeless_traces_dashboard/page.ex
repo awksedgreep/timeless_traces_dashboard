@@ -43,7 +43,7 @@ defmodule TimelessTracesDashboard.Page do
     <.live_nav_bar
       id="span-tabs"
       page={@page}
-      extra_params={["search", "name", "service", "kind", "status", "p", "per_page", "trace_id"]}
+      extra_params={["search", "name", "service", "kind", "status", "p", "per_page", "trace_id", "since", "until"]}
     >
       <:item name="search" label="Search"><span></span></:item>
       <:item name="traces" label="Traces"><span></span></:item>
@@ -71,6 +71,8 @@ defmodule TimelessTracesDashboard.Page do
       trace_id={@trace_id}
       lookup_us={@trace_lookup_us}
       expanded_spans={@expanded_spans}
+      page={@page}
+      socket={@socket}
     />
     <.stats_tab :if={@nav == "stats"} stats={@stats} />
     <.tail_tab :if={@nav == "tail"} entries={@tail_entries} subscribed={@subscribed} />
@@ -90,11 +92,17 @@ defmodule TimelessTracesDashboard.Page do
     service = Map.get(params, "service", "")
     kind = Map.get(params, "kind", "")
     status = Map.get(params, "status", "")
+    since = Map.get(params, "since", "")
+    until_param = Map.get(params, "until", "")
     per_page = params |> Map.get("per_page", "25") |> String.to_integer() |> max(1) |> min(100)
     current_page = params |> Map.get("p", "1") |> String.to_integer() |> max(1)
     offset = (current_page - 1) * per_page
 
     filters = build_filters(name, service, kind, status)
+
+    # Convert seconds to nanoseconds for trace timestamp filtering
+    filters = if since != "", do: [{:since, String.to_integer(since) * 1_000_000_000} | filters], else: filters
+    filters = if until_param != "", do: [{:until, String.to_integer(until_param) * 1_000_000_000} | filters], else: filters
     query_opts = filters ++ [limit: per_page, offset: offset, order: :desc]
 
     case TimelessTraces.query(query_opts) do
