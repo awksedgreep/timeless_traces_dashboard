@@ -725,6 +725,7 @@ defmodule TimelessTracesDashboard.Components do
           </div>
         </div>
       </div>
+      <%!-- Disabled: keeping code in case we re-enable later
       <div class="col-sm-4 mb-3">
         <div class="card">
           <div class="card-body text-center">
@@ -746,6 +747,7 @@ defmodule TimelessTracesDashboard.Components do
           </div>
         </div>
       </div>
+      --%>
       <div class="col-sm-4 mb-3">
         <div class="card">
           <div class="card-body text-center">
