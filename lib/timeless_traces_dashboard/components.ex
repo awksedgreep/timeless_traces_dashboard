@@ -725,29 +725,6 @@ defmodule TimelessTracesDashboard.Components do
           </div>
         </div>
       </div>
-      <%!-- Disabled: keeping code in case we re-enable later
-      <div class="col-sm-4 mb-3">
-        <div class="card">
-          <div class="card-body text-center">
-            <h6 class="card-subtitle text-muted mb-1">Compression w/ Overhead</h6>
-            <h4 class="mb-0">
-              {
-                raw_in = Map.get(@stats, :compression_raw_bytes_in, 0) + @stats.raw_bytes
-                total_disk = @stats.total_bytes + @stats.index_size
-
-                if raw_in > 0 and total_disk > 0 do
-                  ratio = raw_in / total_disk
-                  pct = Float.round((1 - 1 / ratio) * 100, 1)
-                  "#{Float.round(ratio, 1)}x (#{pct}%)"
-                else
-                  if Map.get(@stats, :compaction_count, 0) > 0, do: "1.0x (0%)", else: "pending"
-                end
-              }
-            </h4>
-          </div>
-        </div>
-      </div>
-      --%>
       <div class="col-sm-4 mb-3">
         <div class="card">
           <div class="card-body text-center">
