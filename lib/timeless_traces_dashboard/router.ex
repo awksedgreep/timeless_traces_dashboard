@@ -34,7 +34,7 @@ defmodule TimelessTracesDashboard.Router do
           additional_pages: [traces: TimelessTracesDashboard.Page]
         ] ++ extra
 
-      live_dashboard path, dashboard_opts
+      live_dashboard(path, dashboard_opts)
     end
   end
 end

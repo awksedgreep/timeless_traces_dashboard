@@ -101,8 +101,16 @@ defmodule TimelessTracesDashboard.Page do
     filters = build_filters(name, service, kind, status)
 
     # Convert seconds to nanoseconds for trace timestamp filtering
-    filters = if since != "", do: [{:since, String.to_integer(since) * 1_000_000_000} | filters], else: filters
-    filters = if until_param != "", do: [{:until, String.to_integer(until_param) * 1_000_000_000} | filters], else: filters
+    filters =
+      if since != "",
+        do: [{:since, String.to_integer(since) * 1_000_000_000} | filters],
+        else: filters
+
+    filters =
+      if until_param != "",
+        do: [{:until, String.to_integer(until_param) * 1_000_000_000} | filters],
+        else: filters
+
     query_opts = filters ++ [limit: per_page, offset: offset, order: :desc]
 
     case TimelessTraces.query(query_opts) do

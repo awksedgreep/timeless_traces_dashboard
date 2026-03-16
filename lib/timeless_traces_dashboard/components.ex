@@ -479,8 +479,15 @@ defmodule TimelessTracesDashboard.Components do
         until_s = div(assigns.span.end_time, 1_000_000_000) + 1
 
         Phoenix.LiveDashboard.PageBuilder.live_dashboard_path(
-          assigns.socket, :logs, assigns.page.node, %{},
-          %{"trace_id" => to_string(assigns.trace_id), "since" => to_string(since), "until" => to_string(until_s)}
+          assigns.socket,
+          :logs,
+          assigns.page.node,
+          %{},
+          %{
+            "trace_id" => to_string(assigns.trace_id),
+            "since" => to_string(since),
+            "until" => to_string(until_s)
+          }
         )
       end
 
@@ -592,7 +599,9 @@ defmodule TimelessTracesDashboard.Components do
     """
   end
 
-  defp normalize_event({:event, name, ts, attrs}), do: %{name: name, timestamp: ts, attributes: attrs}
+  defp normalize_event({:event, name, ts, attrs}),
+    do: %{name: name, timestamp: ts, attributes: attrs}
+
   defp normalize_event(%{} = event), do: event
   defp normalize_event(_), do: %{name: "unknown", timestamp: nil, attributes: %{}}
 
@@ -609,11 +618,17 @@ defmodule TimelessTracesDashboard.Components do
   defp to_map(_), do: %{}
 
   defp scope_name(%{name: name}), do: name
-  defp scope_name(scope) when is_map(scope), do: Map.get(scope, :name) || Map.get(scope, "name") || "unknown"
+
+  defp scope_name(scope) when is_map(scope),
+    do: Map.get(scope, :name) || Map.get(scope, "name") || "unknown"
+
   defp scope_name(_), do: "unknown"
 
   defp scope_version(%{version: v}) when v != nil and v != "", do: v
-  defp scope_version(scope) when is_map(scope), do: Map.get(scope, :version) || Map.get(scope, "version")
+
+  defp scope_version(scope) when is_map(scope),
+    do: Map.get(scope, :version) || Map.get(scope, "version")
+
   defp scope_version(_), do: nil
 
   # Build a tree of spans from parent_span_id relationships
