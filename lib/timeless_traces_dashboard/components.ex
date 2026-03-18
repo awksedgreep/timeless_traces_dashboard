@@ -760,14 +760,6 @@ defmodule TimelessTracesDashboard.Components do
           </div>
         </div>
       </div>
-      <div class="col-sm-4 mb-3">
-        <div class="card">
-          <div class="card-body text-center">
-            <h6 class="card-subtitle text-muted mb-1">Index Size</h6>
-            <h4 class="mb-0">{format_bytes(@stats.index_size)}</h4>
-          </div>
-        </div>
-      </div>
     </div>
     """
   end
