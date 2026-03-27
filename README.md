@@ -55,7 +55,7 @@ Add `timeless_traces_dashboard` to your dependencies:
 ```elixir
 def deps do
   [
-    {:timeless_traces_dashboard, "~> 0.2.0"}
+    {:timeless_traces_dashboard, "~> 0.3"}
   ]
 end
 ```
