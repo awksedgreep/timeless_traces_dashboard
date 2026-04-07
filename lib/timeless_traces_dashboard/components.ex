@@ -13,17 +13,16 @@ defmodule TimelessTracesDashboard.Components do
   attr(:status, :string, required: true)
   attr(:current_page, :integer, required: true)
   attr(:per_page, :integer, required: true)
+  attr(:has_more, :boolean, required: true)
   attr(:page, :any, required: true)
   attr(:socket, :any, required: true)
 
   def search_tab(assigns) do
-    total_pages = max(1, ceil(assigns.total / assigns.per_page))
     kinds = ~w(internal server client producer consumer)
     statuses = ~w(ok error unset)
 
     assigns =
       assigns
-      |> assign(:total_pages, total_pages)
       |> assign(:kinds, kinds)
       |> assign(:statuses, statuses)
 
@@ -80,10 +79,10 @@ defmodule TimelessTracesDashboard.Components do
         <div class="card-body p-0">
           <div class="d-flex justify-content-between align-items-center px-3 py-2">
             <small class="text-muted">
-              {@total} {if @total == 1, do: "span", else: "spans"}
+              Showing {length(@entries)} {if length(@entries) == 1, do: "span", else: "spans"}
             </small>
             <small class="text-muted">
-              Page {@current_page} of {@total_pages}
+              Page {@current_page}
             </small>
           </div>
           <table class="table table-sm table-hover mb-0">
@@ -106,9 +105,9 @@ defmodule TimelessTracesDashboard.Components do
             </tbody>
           </table>
           <.pagination
-            :if={@total_pages > 1}
+            :if={@current_page > 1 or @has_more}
             current_page={@current_page}
-            total_pages={@total_pages}
+            has_more={@has_more}
             page={@page}
             socket={@socket}
             name={@name}
@@ -193,7 +192,7 @@ defmodule TimelessTracesDashboard.Components do
   end
 
   attr(:current_page, :integer, required: true)
-  attr(:total_pages, :integer, required: true)
+  attr(:has_more, :boolean, required: true)
   attr(:page, :any, required: true)
   attr(:socket, :any, required: true)
   attr(:name, :string, required: true)
@@ -217,9 +216,9 @@ defmodule TimelessTracesDashboard.Components do
           </.link>
         </li>
         <li class="page-item disabled">
-          <span class="page-link">{@current_page} / {@total_pages}</span>
+          <span class="page-link">Page {@current_page}</span>
         </li>
-        <li class={"page-item #{if @current_page >= @total_pages, do: "disabled"}"}>
+        <li class={"page-item #{if not @has_more, do: "disabled"}"}>
           <.link
             patch={
               page_path(@socket, @page, @current_page + 1, @name, @service, @kind, @status, @per_page)
