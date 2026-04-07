@@ -89,7 +89,7 @@ defmodule TimelessTracesDashboard.Page do
       socket = apply_nav(nav, params, socket)
       {:noreply, socket}
     else
-      to = live_dashboard_path(socket, socket.assigns.page, Map.put(params, "nav", nav))
+      to = live_dashboard_path(socket, socket.assigns.page, normalize_dashboard_params(params, nav))
       {:noreply, push_patch(socket, to: to)}
     end
   end
@@ -232,6 +232,26 @@ defmodule TimelessTracesDashboard.Page do
         else: filters
 
     filters
+  end
+
+  defp normalize_dashboard_params(params, nav) do
+    params
+    |> Enum.map(fn
+      {"search", value} -> {:search, value}
+      {"name", value} -> {:name, value}
+      {"service", value} -> {:service, value}
+      {"kind", value} -> {:kind, value}
+      {"status", value} -> {:status, value}
+      {"p", value} -> {:p, value}
+      {"per_page", value} -> {:per_page, value}
+      {"trace_id", value} -> {:trace_id, value}
+      {"since", value} -> {:since, value}
+      {"until", value} -> {:until, value}
+      {_key, _value} -> nil
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.into(%{})
+    |> Map.put(:nav, nav)
   end
 
   @impl true
