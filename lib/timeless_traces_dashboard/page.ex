@@ -46,9 +46,9 @@ defmodule TimelessTracesDashboard.Page do
       page={@page}
       extra_params={["search", "name", "service", "kind", "status", "p", "per_page", "trace_id", "since", "until"]}
     >
+      <:item name="stats" label="Stats"><span></span></:item>
       <:item name="search" label="Search"><span></span></:item>
       <:item name="traces" label="Traces"><span></span></:item>
-      <:item name="stats" label="Stats"><span></span></:item>
       <:item name="tail" label="Live Tail"><span></span></:item>
     </.live_nav_bar>
     <.search_tab
