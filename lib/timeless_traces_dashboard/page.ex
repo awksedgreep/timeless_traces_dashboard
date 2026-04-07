@@ -84,8 +84,14 @@ defmodule TimelessTracesDashboard.Page do
   @impl true
   def handle_params(params, _uri, socket) do
     nav = resolve_nav(params)
-    socket = apply_nav(nav, params, socket)
-    {:noreply, socket}
+
+    if Map.get(params, "nav") == nav do
+      socket = apply_nav(nav, params, socket)
+      {:noreply, socket}
+    else
+      to = live_dashboard_path(socket, socket.assigns.page, Map.put(params, "nav", nav))
+      {:noreply, push_patch(socket, to: to)}
+    end
   end
 
   defp apply_nav("search", params, socket) do
@@ -279,7 +285,7 @@ defmodule TimelessTracesDashboard.Page do
 
   @impl true
   def handle_refresh(socket) do
-    nav = Map.get(socket.assigns.page.params, "nav", "search")
+    nav = resolve_nav(socket.assigns.page.params)
 
     socket =
       case nav do
