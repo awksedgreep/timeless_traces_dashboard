@@ -202,13 +202,20 @@ defmodule TimelessTracesDashboard.Components do
   attr(:per_page, :integer, required: true)
 
   defp pagination(assigns) do
+    assigns =
+      assigns
+      |> assign(:prev_page, max(assigns.current_page - 1, 1))
+      |> assign(:next_page, assigns.current_page + 1)
+
     ~H"""
     <nav class="d-flex justify-content-center py-2">
       <ul class="pagination pagination-sm mb-0">
         <li class={"page-item #{if @current_page <= 1, do: "disabled"}"}>
+          <span :if={@current_page <= 1} class="page-link">Prev</span>
           <.link
+            :if={@current_page > 1}
             patch={
-              page_path(@socket, @page, @current_page - 1, @name, @service, @kind, @status, @per_page)
+              page_path(@socket, @page, @prev_page, @name, @service, @kind, @status, @per_page)
             }
             class="page-link"
           >
@@ -219,9 +226,11 @@ defmodule TimelessTracesDashboard.Components do
           <span class="page-link">Page {@current_page}</span>
         </li>
         <li class={"page-item #{if not @has_more, do: "disabled"}"}>
+          <span :if={not @has_more} class="page-link">Next</span>
           <.link
+            :if={@has_more}
             patch={
-              page_path(@socket, @page, @current_page + 1, @name, @service, @kind, @status, @per_page)
+              page_path(@socket, @page, @next_page, @name, @service, @kind, @status, @per_page)
             }
             class="page-link"
           >
