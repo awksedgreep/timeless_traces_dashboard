@@ -625,17 +625,22 @@ defmodule TimelessTracesDashboard.Components do
   defp to_map(attrs) when is_list(attrs), do: Map.new(attrs)
   defp to_map(_), do: %{}
 
-  defp scope_name(%{name: name}), do: name
-
-  defp scope_name(scope) when is_map(scope),
-    do: Map.get(scope, :name) || Map.get(scope, "name") || "unknown"
+  defp scope_name(scope) when is_map(scope) do
+    case Map.get(scope, :name) || Map.get(scope, "name") do
+      name when name not in [nil, ""] -> name
+      _ -> "unknown"
+    end
+  end
 
   defp scope_name(_), do: "unknown"
 
-  defp scope_version(%{version: v}) when v != nil and v != "", do: v
+  defp scope_version(scope) when is_map(scope) do
+    case Map.get(scope, :version) || Map.get(scope, "version") do
+      version when version not in [nil, ""] -> version
+      _ -> nil
+    end
+  end
 
-  defp scope_version(scope) when is_map(scope),
-    do: Map.get(scope, :version) || Map.get(scope, "version")
 
   defp scope_version(_), do: nil
 
@@ -879,8 +884,6 @@ defmodule TimelessTracesDashboard.Components do
 
   defp format_lookup_time(us) when us >= 1000, do: "found in #{Float.round(us / 1000, 1)}ms"
   defp format_lookup_time(us), do: "found in #{us}us"
-
-  defp trace_duration([]), do: 0
 
   defp trace_duration(spans) do
     min_start = spans |> Enum.map(& &1.start_time) |> Enum.min()

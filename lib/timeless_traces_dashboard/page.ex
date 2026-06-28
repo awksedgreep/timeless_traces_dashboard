@@ -125,7 +125,7 @@ defmodule TimelessTracesDashboard.Page do
       {:ok, %TimelessTraces.Result{} = result} ->
         entries = result.entries
         total = result.total
-        has_more = Map.get(result, :has_more, false)
+        has_more = length(entries) == per_page
 
         assign(socket,
           entries: entries,
