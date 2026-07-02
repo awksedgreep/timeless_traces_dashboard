@@ -1,7 +1,7 @@
 defmodule TimelessTracesDashboard.MixProject do
   use Mix.Project
 
-  @version "0.3.10"
+  @version "0.3.11"
   @source_url "https://github.com/awksedgreep/timeless_traces_dashboard"
 
   def project do
@@ -27,7 +27,7 @@ defmodule TimelessTracesDashboard.MixProject do
 
   defp deps do
     [
-      {:timeless_traces, "~> 1.3.2"},
+      {:timeless_traces, "~> 1.3"},
       {:phoenix_live_dashboard, "~> 0.8"},
       {:phoenix_live_view, "~> 1.0"},
       {:jason, "~> 1.4"},
