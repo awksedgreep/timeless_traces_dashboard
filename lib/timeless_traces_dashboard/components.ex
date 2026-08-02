@@ -641,7 +641,6 @@ defmodule TimelessTracesDashboard.Components do
     end
   end
 
-
   defp scope_version(_), do: nil
 
   # Build a tree of spans from parent_span_id relationships

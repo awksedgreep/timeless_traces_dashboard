@@ -31,6 +31,7 @@ defmodule TimelessTracesDashboard.MixProject do
       {:phoenix_live_dashboard, "~> 0.8"},
       {:phoenix_live_view, "~> 1.0"},
       {:jason, "~> 1.4"},
+      {:req, "~> 0.5"},
       {:bandit, "~> 1.6"},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:igniter, "~> 0.6", optional: true}

@@ -4,6 +4,8 @@ defmodule TimelessTracesDashboard.Page do
 
   import TimelessTracesDashboard.Components
 
+  alias TimelessTracesDashboard.HistoricalSource
+
   @tail_cap 200
 
   @impl true
@@ -89,7 +91,9 @@ defmodule TimelessTracesDashboard.Page do
       socket = apply_nav(nav, params, socket)
       {:noreply, socket}
     else
-      to = live_dashboard_path(socket, socket.assigns.page, normalize_dashboard_params(params, nav))
+      to =
+        live_dashboard_path(socket, socket.assigns.page, normalize_dashboard_params(params, nav))
+
       {:noreply, push_patch(socket, to: to)}
     end
   end
@@ -121,7 +125,7 @@ defmodule TimelessTracesDashboard.Page do
 
     query_opts = filters ++ [limit: per_page, offset: offset, order: :desc, count_total: false]
 
-    case TimelessTraces.query(query_opts) do
+    case HistoricalSource.query(query_opts) do
       {:ok, %TimelessTraces.Result{} = result} ->
         entries = result.entries
         total = result.total
@@ -162,7 +166,7 @@ defmodule TimelessTracesDashboard.Page do
     if trace_id != "" do
       start = System.monotonic_time(:microsecond)
 
-      case TimelessTraces.trace(trace_id) do
+      case HistoricalSource.trace(trace_id) do
         {:ok, spans} ->
           elapsed_us = System.monotonic_time(:microsecond) - start
 

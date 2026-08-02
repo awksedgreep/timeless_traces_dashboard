@@ -90,6 +90,42 @@ live_dashboard "/dashboard",
 
 Navigate to `/dashboard/traces` in your browser.
 
+## Experimental Rust traces data plane
+
+The POC branch can route only historical Search and Traces-tab detail through
+the separately supervised `timeless-traces-api` process. Phoenix still owns
+dashboard sessions, state, rendering, stats, and live tail. The default remains
+the embedded `TimelessTraces` source.
+
+Add the executable owner to your application's supervision tree:
+
+```elixir
+{TimelessTracesDashboard.DataPlane.Process,
+ binary: "/opt/timeless/bin/timeless-traces-api",
+ extension: "/opt/timeless/lib/libtimeless_ext.so",
+ database: "/var/lib/timeless/traces.db",
+ listen: "127.0.0.1:19449"}
+```
+
+Then opt the two historical paths into the loopback client:
+
+```elixir
+config :timeless_traces_dashboard, :historical_source,
+  {TimelessTracesDashboard.HistoricalSource.DataPlane,
+   client_opts: [process: TimelessTracesDashboard.DataPlane.Process]}
+```
+
+The Rust child is the exclusive owner of that database. The client owns no
+SQLite connection and validates a complete rich-span response before exposing
+it to LiveView. Invalid JSON, a truncated response, disconnect, or restart is
+one failed operation and never a partial waterfall. Normal OTP shutdown sends
+`SIGTERM` and waits for the child to drain, flush, and exit; abnormal exit is
+isolated for supervisor restart. Only IPv4 loopback is accepted in this POC.
+
+`bench/traces_data_plane_boundary.exs` measures the incremental supervision
+lookup, process memory, and SIGKILL-to-ready recovery using sibling release
+artifacts.
+
 ## Existing OpenTelemetry Exporter
 
 OpenTelemetry's `:traces_exporter` config only supports a **single exporter**. If you already export traces to an external system (Jaeger, Tempo, Datadog, etc.), setting `traces_exporter: {TimelessTraces.Exporter, []}` will **replace** your existing exporter and traces will stop flowing to that system.
