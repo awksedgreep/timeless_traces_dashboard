@@ -1,11 +1,13 @@
 defmodule TimelessTracesDashboard.DataPlane.Process do
   @moduledoc """
-  Owns one standalone `timeless-traces-api` executable through an OTP port.
+  Legacy POC owner for one standalone `timeless-traces-api` executable.
 
   This reuses the lifecycle proven by the metrics POC: the Rust child alone
   owns its database, readiness follows its listener announcement, abnormal
   exit is isolated for supervisor restart, and normal OTP termination sends
-  `SIGTERM` and waits for drain/reaping.
+  `SIGTERM` and waits for drain/reaping. Production releases must use the
+  Phoenix control-plane owner instead. This module is retained only for POC
+  compatibility tests and is never selected implicitly by `HistoricalSource`.
   """
 
   use GenServer

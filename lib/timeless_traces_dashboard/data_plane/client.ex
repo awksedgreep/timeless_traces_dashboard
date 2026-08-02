@@ -48,6 +48,9 @@ defmodule TimelessTracesDashboard.DataPlane.Client do
     end
   end
 
+  @spec stats(keyword()) :: {:ok, map()} | {:error, term()}
+  def stats(opts \\ []), do: get_json("/select/traces/stats", %{}, opts)
+
   @doc false
   def request_json(path, params, opts \\ []), do: get_json(path, params, opts)
 
@@ -68,6 +71,7 @@ defmodule TimelessTracesDashboard.DataPlane.Client do
         method: :get,
         url: endpoint <> path,
         params: params,
+        headers: Keyword.get(opts, :headers, []),
         receive_timeout: Keyword.get(opts, :timeout, @default_timeout),
         retry: false,
         decode_body: false

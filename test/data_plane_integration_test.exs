@@ -20,7 +20,11 @@ defmodule TimelessTracesDashboard.DataPlaneIntegrationTest do
       unique = System.unique_integer([:positive])
       name = :"traces_data_plane_#{unique}"
       database = Path.join(System.tmp_dir!(), "traces_data_plane_#{unique}.db")
+      policy_path = Path.join(System.tmp_dir!(), "traces_data_plane_policy_#{unique}.json")
       port = free_port()
+      {token, policy} = auth_fixture()
+      File.write!(policy_path, Jason.encode!(policy), [:binary, :exclusive])
+      auth_header = {"authorization", "Bearer " <> token}
       prior_source = Application.get_env(:timeless_traces_dashboard, :historical_source)
 
       on_exit(fn ->
@@ -29,6 +33,7 @@ defmodule TimelessTracesDashboard.DataPlaneIntegrationTest do
         File.rm(database <> "-shm")
         File.rm(database <> "-wal")
         File.rm(database <> ".timeless-traces-api.lock")
+        File.rm(policy_path)
       end)
 
       process_opts = [
@@ -40,7 +45,10 @@ defmodule TimelessTracesDashboard.DataPlaneIntegrationTest do
         env: %{
           "TIMELESS_TRACES_FLUSH_INTERVAL_SECS" => "3600",
           "TIMELESS_TRACES_OPTIMIZE_INTERVAL_SECS" => "3600",
-          "TIMELESS_TRACES_RETENTION_SECS" => "0"
+          "TIMELESS_TRACES_RETENTION_SECS" => "0",
+          "TIMELESS_AUTH_MODE" => "required",
+          "TIMELESS_AUTH_POLICY_FILE" => policy_path,
+          "TIMELESS_TENANT" => "default"
         }
       ]
 
@@ -50,10 +58,14 @@ defmodule TimelessTracesDashboard.DataPlaneIntegrationTest do
       startup_us = System.monotonic_time(:microsecond) - started
       assert File.regular?(database <> ".timeless-traces-api.lock")
 
-      assert %Req.Response{status: 200} = ingest(endpoint, File.read!(@rich_fixture))
+      assert %Req.Response{status: 200} = ingest(endpoint, File.read!(@rich_fixture), auth_header)
 
       assert %Req.Response{status: 200, body: flush} =
-               Req.post!(endpoint <> "/api/v1/flush", decode_body: true, retry: false)
+               Req.post!(endpoint <> "/api/v1/flush",
+                 headers: [auth_header],
+                 decode_body: true,
+                 retry: false
+               )
 
       assert flush["completed_spans"] == 2
       assert flush["queued_spans"] == 0
@@ -62,7 +74,8 @@ defmodule TimelessTracesDashboard.DataPlaneIntegrationTest do
       Application.put_env(
         :timeless_traces_dashboard,
         :historical_source,
-        {TimelessTracesDashboard.HistoricalSource.DataPlane, client_opts: [process: name]}
+        {TimelessTracesDashboard.HistoricalSource.DataPlane,
+         client: Client, client_opts: [process: name, headers: [auth_header]]}
       )
 
       socket = mounted_socket()
@@ -106,12 +119,17 @@ defmodule TimelessTracesDashboard.DataPlaneIntegrationTest do
       new_beam_pid = await_restarted(name, old_beam_pid, 500)
       assert is_pid(new_beam_pid)
       assert {:ok, ^endpoint} = DataPlaneProcess.await_ready(name)
-      assert {:ok, restarted_spans} = Client.trace(trace_id, process: name)
+
+      assert {:ok, restarted_spans} =
+               Client.trace(trace_id, process: name, headers: [auth_header])
+
       assert_exact_rich_trace(restarted_spans)
       assert Process.alive?(self())
 
       graceful_trace_id = "fedcba98765432100123456789abcdef"
-      assert %Req.Response{status: 200} = ingest(endpoint, graceful_fixture(graceful_trace_id))
+
+      assert %Req.Response{status: 200} =
+               ingest(endpoint, graceful_fixture(graceful_trace_id), auth_header)
 
       restarted_os_pid = DataPlaneProcess.os_pid(name)
       assert :ok = stop_supervised({DataPlaneProcess, name})
@@ -119,7 +137,10 @@ defmodule TimelessTracesDashboard.DataPlaneIntegrationTest do
 
       start_supervised!({DataPlaneProcess, process_opts})
       assert {:ok, ^endpoint} = DataPlaneProcess.await_ready(name)
-      assert {:ok, [graceful]} = Client.trace(graceful_trace_id, process: name)
+
+      assert {:ok, [graceful]} =
+               Client.trace(graceful_trace_id, process: name, headers: [auth_header])
+
       assert graceful.name == "graceful tail"
       assert graceful.resource == %{"service.name" => "shutdown-svc", "replica" => 9}
 
@@ -139,13 +160,85 @@ defmodule TimelessTracesDashboard.DataPlaneIntegrationTest do
     socket
   end
 
-  defp ingest(endpoint, body) do
+  defp ingest(endpoint, body, auth_header) do
     Req.post!(endpoint <> "/insert/opentelemetry/v1/traces",
       body: body,
-      headers: [{"content-type", "application/json"}],
+      headers: [{"content-type", "application/json"}, auth_header],
       decode_body: true,
       retry: false
     )
+  end
+
+  defp auth_fixture do
+    {public_key, private_key} = :crypto.generate_key(:eddsa, :ed25519)
+    now = System.system_time(:second)
+    limits = limits()
+
+    policy = %{
+      version: 1,
+      issuer: "timeless-control-plane",
+      audience: "timeless-data-plane",
+      tenant: "default",
+      minimum_auth_version: 1,
+      max_token_seconds: 900,
+      maximum_limits: limits,
+      subjects: %{
+        "dashboard-test" => %{
+          auth_version: 1,
+          scopes: ~w(traces:read traces:write traces:stats traces:maintenance),
+          maximum_limits: limits,
+          enabled: true
+        }
+      },
+      keys: [
+        %{
+          kid: "dashboard-test-key",
+          public_key: Base.url_encode64(public_key, padding: false),
+          not_before: 0,
+          expires_at: now + 900,
+          revoked: false
+        }
+      ],
+      revoked_jtis: []
+    }
+
+    claims = %{
+      iss: "timeless-control-plane",
+      aud: "timeless-data-plane",
+      sub: "dashboard-test",
+      jti: "dashboard-test-token",
+      tenant: "default",
+      signal: "traces",
+      scopes: ~w(traces:read traces:write traces:stats traces:maintenance),
+      auth_version: 1,
+      iat: now,
+      nbf: now - 1,
+      exp: now + 300,
+      limits: limits
+    }
+
+    encoded_header =
+      %{alg: "EdDSA", kid: "dashboard-test-key", typ: "JWT"}
+      |> Jason.encode!()
+      |> Base.url_encode64(padding: false)
+
+    encoded_claims = claims |> Jason.encode!() |> Base.url_encode64(padding: false)
+    signing_input = encoded_header <> "." <> encoded_claims
+    signature = :crypto.sign(:eddsa, :none, signing_input, [private_key, :ed25519])
+    token = signing_input <> "." <> Base.url_encode64(signature, padding: false)
+    {token, policy}
+  end
+
+  defp limits do
+    %{
+      max_request_bytes: 16_777_216,
+      max_decompressed_bytes: 33_554_432,
+      max_response_bytes: 16_777_216,
+      max_query_rows: 100_000,
+      max_request_ms: 30_000,
+      max_concurrent_requests: 8,
+      max_queue_ms: 5_000
+    }
   end
 
   defp assert_exact_rich_trace(spans) do

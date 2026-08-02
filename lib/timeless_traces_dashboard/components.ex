@@ -702,7 +702,7 @@ defmodule TimelessTracesDashboard.Components do
           <div class="card-body text-center">
             <h6 class="card-subtitle text-muted mb-1">Storage Mode</h6>
             <h4 class="mb-0">
-              <span class="badge bg-info">{TimelessTraces.Config.storage()}</span>
+              <span class="badge bg-info">{Map.get(@stats, :storage_mode, TimelessTraces.Config.storage())}</span>
             </h4>
           </div>
         </div>
@@ -780,10 +780,12 @@ defmodule TimelessTracesDashboard.Components do
 
   attr(:entries, :list, required: true)
   attr(:subscribed, :boolean, required: true)
+  attr(:error, :string, default: nil)
 
   def tail_tab(assigns) do
     ~H"""
     <div class="mb-4">
+      <div :if={@error} class="alert alert-warning" role="alert">{@error}</div>
       <div class="d-flex align-items-center mb-3" style="gap: 0.75rem;">
         <button
           phx-click="toggle_tail"

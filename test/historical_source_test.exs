@@ -58,6 +58,35 @@ defmodule TimelessTracesDashboard.HistoricalSourceTest do
     assert trace_id == span.trace_id
   end
 
+  test "stats use the same source and Rust mode rejects live tail without fallback" do
+    Application.put_env(
+      :timeless_traces_dashboard,
+      :historical_source,
+      {TimelessTracesDashboard.HistoricalSource.DataPlane,
+       client: TimelessTracesDashboard.DataPlaneSourceFixture}
+    )
+
+    assert {:ok, %{total_entries: 3, storage_mode: :libsql}} =
+             TimelessTracesDashboard.HistoricalSource.stats()
+
+    assert {:error, {:unsupported_capability, :traces_live_tail}} =
+             TimelessTracesDashboard.HistoricalSource.subscribe()
+
+    assert {:error, {:unsupported_capability, :traces_live_tail}} =
+             TimelessTracesDashboard.HistoricalSource.unsubscribe()
+  end
+
+  test "selected data-plane source fails closed without a configured client" do
+    Application.put_env(
+      :timeless_traces_dashboard,
+      :historical_source,
+      TimelessTracesDashboard.HistoricalSource.DataPlane
+    )
+
+    assert {:error, :missing_data_plane_client} =
+             TimelessTracesDashboard.HistoricalSource.query([])
+  end
+
   defp mounted_socket do
     page = %PageBuilder{params: %{}, route: :traces, node: nil}
     socket = %Socket{assigns: %{__changed__: %{}, page: page}}
@@ -98,5 +127,20 @@ defmodule TimelessTracesDashboard.HistoricalSourceFixture do
   def trace(trace_id, opts) do
     send(Keyword.fetch!(opts, :notify), {:historical_trace, trace_id})
     {:ok, [Keyword.fetch!(opts, :span)]}
+  end
+
+  @impl true
+  def stats(_opts), do: {:ok, %{total_entries: 1}}
+
+  @impl true
+  def subscribe(_opts), do: :ok
+
+  @impl true
+  def unsubscribe(_opts), do: :ok
+end
+
+defmodule TimelessTracesDashboard.DataPlaneSourceFixture do
+  def stats do
+    {:ok, %{"total_spans" => 3, "bytes_on_disk" => 90, "compressed_blocks" => 1}}
   end
 end
