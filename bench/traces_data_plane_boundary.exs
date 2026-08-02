@@ -12,7 +12,7 @@ defmodule TracesDataPlaneBoundaryBench do
 
     binary =
       System.get_env("TIMELESS_TRACES_API_BINARY") ||
-        Path.join(libsql, "poc/timeless-traces-api/target/release/timeless-traces-api")
+        Path.join(libsql, "servers/target/release/timeless-traces-api")
 
     extension =
       System.get_env("TIMELESS_LIBSQL_EXTENSION") ||

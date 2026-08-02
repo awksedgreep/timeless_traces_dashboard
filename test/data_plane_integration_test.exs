@@ -8,7 +8,7 @@ defmodule TimelessTracesDashboard.DataPlaneIntegrationTest do
   alias TimelessTracesDashboard.Page
 
   @libsql Path.expand("../../timeless-libsql", __DIR__)
-  @binary Path.join(@libsql, "poc/timeless-traces-api/target/release/timeless-traces-api")
+  @binary Path.join(@libsql, "servers/target/release/timeless-traces-api")
   @extension Path.join(@libsql, "target/release/libtimeless_ext.so")
   @rich_fixture Path.expand(
                   "../../timeless_traces/test/fixtures/data_plane/rich_trace.otlp.json",
