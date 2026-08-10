@@ -76,6 +76,39 @@ defmodule TimelessTracesDashboard.HistoricalSourceTest do
              TimelessTracesDashboard.HistoricalSource.unsubscribe()
   end
 
+  describe "local source honours the subscribe contract" do
+    # TimelessTraces.subscribe/1 delegates to Registry.register/3, which answers
+    # {:ok, pid}. Leaking that shape broke live tail: the dashboard matches the
+    # declared :ok | {:error, term()} contract and crashed with a
+    # CaseClauseError on the success path, so the LiveView died on mount and the
+    # page hung. The logs dashboard had the identical defect.
+    setup do
+      Application.put_env(
+        :timeless_traces_dashboard,
+        :historical_source,
+        TimelessTracesDashboard.HistoricalSource.Local
+      )
+
+      {:ok, _} = Application.ensure_all_started(:timeless_traces)
+      on_exit(fn -> TimelessTraces.unsubscribe() end)
+      :ok
+    end
+
+    test "subscribe returns :ok, not Registry's {:ok, pid}" do
+      assert :ok = TimelessTracesDashboard.HistoricalSource.subscribe()
+    end
+
+    test "subscribing twice is still :ok" do
+      assert :ok = TimelessTracesDashboard.HistoricalSource.subscribe()
+      assert :ok = TimelessTracesDashboard.HistoricalSource.subscribe()
+    end
+
+    test "unsubscribe returns :ok" do
+      assert :ok = TimelessTracesDashboard.HistoricalSource.subscribe()
+      assert :ok = TimelessTracesDashboard.HistoricalSource.unsubscribe()
+    end
+  end
+
   test "selected data-plane source fails closed without a configured client" do
     Application.put_env(
       :timeless_traces_dashboard,
