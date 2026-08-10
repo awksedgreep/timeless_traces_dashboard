@@ -9,6 +9,8 @@ defmodule TimelessTracesDashboard.Components do
   attr(:search, :string, required: true)
   attr(:name, :string, required: true)
   attr(:service, :string, required: true)
+  attr(:window, :string, required: true)
+  attr(:windows, :list, required: true)
   attr(:kind, :string, required: true)
   attr(:status, :string, required: true)
   attr(:current_page, :integer, required: true)
@@ -70,6 +72,14 @@ defmodule TimelessTracesDashboard.Components do
               </option>
             </select>
           </div>
+          <div>
+            <label class="form-label mb-1"><small>Range</small></label>
+            <select name="window" class="form-select form-select-sm" style="min-width: 140px;">
+              <option :for={{value, label} <- @windows} value={value} selected={@window == value}>
+                {label}
+              </option>
+            </select>
+          </div>
           <button type="submit" class="btn btn-primary btn-sm">Search</button>
         </form>
         <button phx-click="clear" class="btn btn-outline-secondary btn-sm">Clear</button>
@@ -114,6 +124,7 @@ defmodule TimelessTracesDashboard.Components do
             service={@service}
             kind={@kind}
             status={@status}
+            window={@window}
             per_page={@per_page}
           />
         </div>
@@ -195,6 +206,7 @@ defmodule TimelessTracesDashboard.Components do
   attr(:has_more, :boolean, required: true)
   attr(:page, :any, required: true)
   attr(:socket, :any, required: true)
+  attr(:window, :string, required: true)
   attr(:name, :string, required: true)
   attr(:service, :string, required: true)
   attr(:kind, :string, required: true)
@@ -215,7 +227,7 @@ defmodule TimelessTracesDashboard.Components do
           <.link
             :if={@current_page > 1}
             patch={
-              page_path(@socket, @page, @prev_page, @name, @service, @kind, @status, @per_page)
+              page_path(@socket, @page, @prev_page, @name, @service, @kind, @status, @window, @per_page)
             }
             class="page-link"
           >
@@ -230,7 +242,7 @@ defmodule TimelessTracesDashboard.Components do
           <.link
             :if={@has_more}
             patch={
-              page_path(@socket, @page, @next_page, @name, @service, @kind, @status, @per_page)
+              page_path(@socket, @page, @next_page, @name, @service, @kind, @status, @window, @per_page)
             }
             class="page-link"
           >
@@ -242,16 +254,30 @@ defmodule TimelessTracesDashboard.Components do
     """
   end
 
-  defp page_path(socket, page, page_num, name, service, kind, status, per_page) do
-    Phoenix.LiveDashboard.PageBuilder.live_dashboard_path(socket, page, %{
+  defp page_path(socket, page, page_num, name, service, kind, status, window, per_page) do
+    Phoenix.LiveDashboard.PageBuilder.live_dashboard_path(
+      socket,
+      page,
+      page_params(page_num, name, service, kind, status, window, per_page)
+    )
+  end
+
+  @doc false
+  # Split out so it can be asserted without a router. The range has to travel
+  # with the page number: without it paging falls back to the default window,
+  # so a search over "All time" would silently return 24-hour results from page
+  # two onward, with a total that no longer matches the pager that produced it.
+  def page_params(page_num, name, service, kind, status, window, per_page) do
+    %{
       nav: "search",
       name: name,
       service: service,
       kind: kind,
       status: status,
+      window: window,
       p: to_string(page_num),
       per_page: to_string(per_page)
-    })
+    }
   end
 
   # --- Trace tab ---

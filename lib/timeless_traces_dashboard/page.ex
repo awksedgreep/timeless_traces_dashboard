@@ -8,6 +8,23 @@ defmodule TimelessTracesDashboard.Page do
 
   @tail_cap 200
 
+  # Mirrors timeless_logs_dashboard so the two plugins offer the same control.
+  # Traces timestamps are seconds at this boundary (the page multiplies to
+  # nanoseconds), where logs are microseconds — the vocabulary is shared, the
+  # unit is each store's own.
+  @windows %{"1h" => 3_600, "24h" => 86_400, "7d" => 604_800, "30d" => 2_592_000}
+  @default_window "24h"
+
+  @doc false
+  def window_options,
+    do: [
+      {"1h", "Last hour"},
+      {"24h", "Last 24 hours"},
+      {"7d", "Last 7 days"},
+      {"30d", "Last 30 days"},
+      {"all", "All time"}
+    ]
+
   @impl true
   def menu_link(_, _) do
     {:ok, "TimelessTraces"}
@@ -34,6 +51,7 @@ defmodule TimelessTracesDashboard.Page do
        service: "",
        kind: "",
        status: "",
+       window: @default_window,
        per_page: 25,
        current_page: 1
      )}
@@ -41,13 +59,16 @@ defmodule TimelessTracesDashboard.Page do
 
   @impl true
   def render(assigns) do
-    assigns = assign(assigns, :nav, resolve_nav(assigns.page.params))
+    assigns =
+      assigns
+      |> assign(:nav, resolve_nav(assigns.page.params))
+      |> assign(:windows, window_options())
 
     ~H"""
     <.live_nav_bar
       id="span-tabs"
       page={@page}
-      extra_params={["search", "name", "service", "kind", "status", "p", "per_page", "trace_id", "since", "until"]}
+      extra_params={["search", "name", "service", "kind", "status", "window", "p", "per_page", "trace_id", "since", "until"]}
     >
       <:item name="stats" label="Stats"><span></span></:item>
       <:item name="search" label="Search"><span></span></:item>
@@ -63,6 +84,8 @@ defmodule TimelessTracesDashboard.Page do
       service={@service}
       kind={@kind}
       status={@status}
+      window={@window}
+      windows={@windows}
       current_page={@current_page}
       per_page={@per_page}
       has_more={@has_more}
@@ -110,7 +133,8 @@ defmodule TimelessTracesDashboard.Page do
     service = Map.get(params, "service", "")
     kind = Map.get(params, "kind", "")
     status = Map.get(params, "status", "")
-    since = Map.get(params, "since", "")
+    window = Map.get(params, "window", @default_window)
+    since = params |> Map.get("since", "") |> default_since(window)
     until_param = Map.get(params, "until", "")
     per_page = params |> Map.get("per_page", "25") |> String.to_integer() |> max(1) |> min(100)
     current_page = params |> Map.get("p", "1") |> String.to_integer() |> max(1)
@@ -145,6 +169,7 @@ defmodule TimelessTracesDashboard.Page do
           service: service,
           kind: kind,
           status: status,
+          window: window,
           per_page: per_page,
           current_page: current_page
         )
@@ -159,6 +184,7 @@ defmodule TimelessTracesDashboard.Page do
           service: service,
           kind: kind,
           status: status,
+          window: window,
           per_page: per_page,
           current_page: current_page
         )
@@ -217,6 +243,28 @@ defmodule TimelessTracesDashboard.Page do
 
   defp apply_nav(_, _params, socket), do: socket
 
+  # A trace search without a timestamp bound scans the whole store. start_ts
+  # pushes down, so the default range keeps paging cheap; "All time" is still
+  # available and the header names the active range, because a silent window
+  # makes older data look missing.
+  defp default_since("", window), do: window_start(window)
+  defp default_since(since, _window), do: since
+
+  defp window_start("all"), do: ""
+
+  defp window_start(window) do
+    case Map.fetch(@windows, window) do
+      {:ok, seconds} ->
+        DateTime.utc_now()
+        |> DateTime.add(-seconds, :second)
+        |> DateTime.to_unix()
+        |> Integer.to_string()
+
+      :error ->
+        window_start(@default_window)
+    end
+  end
+
   defp resolve_nav(params) do
     case Map.get(params, "nav") do
       nav when nav in ["search", "traces", "stats", "tail"] ->
@@ -273,6 +321,7 @@ defmodule TimelessTracesDashboard.Page do
       service: Map.get(params, "service", ""),
       kind: Map.get(params, "kind", ""),
       status: Map.get(params, "status", ""),
+      window: Map.get(params, "window", @default_window),
       p: "1",
       per_page: to_string(socket.assigns.per_page)
     }
