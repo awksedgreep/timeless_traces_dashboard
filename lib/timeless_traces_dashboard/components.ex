@@ -768,6 +768,7 @@ defmodule TimelessTracesDashboard.Components do
             <h4 class="mb-0">
               {format_compression_ratio(@stats)}
             </h4>
+            <small class="text-muted">{format_storage_efficiency(@stats)}</small>
           </div>
         </div>
       </div>
@@ -916,6 +917,25 @@ defmodule TimelessTracesDashboard.Components do
   # optimize profile counters that once fed this tile (which then showed
   # "pending" on fully compressed stores after every restart). "pending"
   # now strictly means raw blocks exist and none are compressed yet.
+  # The durable headline: what the user's data actually costs on disk.
+  # Unlike the ratio (which only counts optimize passes since extension
+  # 0.6.2 and converges over the retention window), this is exact from the
+  # first stats call.
+  defp format_storage_efficiency(stats) do
+    n = Map.get(stats, :total_entries, 0)
+    bytes = Map.get(stats, :total_bytes, 0)
+
+    if n > 0 and bytes > 0 do
+      "#{format_number(n)} spans in #{format_bytes(bytes)} · #{Float.round(bytes / n, 2)} B/span"
+    else
+      ""
+    end
+  end
+
+  defp format_number(n) when n >= 1_000_000, do: "#{Float.round(n / 1_000_000, 1)}M"
+  defp format_number(n) when n >= 1_000, do: "#{Float.round(n / 1_000, 1)}k"
+  defp format_number(n), do: to_string(n)
+
   defp format_compression_ratio(stats) do
     bytes_in = Map.get(stats, :compression_raw_bytes_in, 0)
     bytes_out = Map.get(stats, :compression_compressed_bytes_out, 0)
