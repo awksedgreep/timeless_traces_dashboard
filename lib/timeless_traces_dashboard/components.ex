@@ -750,8 +750,8 @@ defmodule TimelessTracesDashboard.Components do
         <div class="card">
           <div class="card-body text-center">
             <h6 class="card-subtitle text-muted mb-1">Compressed Blocks</h6>
-            <% compressed_blocks = @stats.zstd_blocks + Map.get(@stats, :openzl_blocks, 0) %>
-            <% compressed_bytes = @stats.zstd_bytes + Map.get(@stats, :openzl_bytes, 0) %>
+            <% compressed_blocks = @stats.compressed_blocks %>
+            <% compressed_bytes = @stats.compressed_bytes %>
             <h4 class="mb-0">
               {compressed_blocks}
               <small class="text-muted" style="font-size: 0.6em;">
