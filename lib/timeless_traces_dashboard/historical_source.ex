@@ -102,6 +102,11 @@ defmodule TimelessTracesDashboard.HistoricalSource.DataPlane do
     with {:ok, client} <- Keyword.fetch(opts, :client) do
       client_opts = Keyword.get(opts, :client_opts, [])
 
+      # function_exported?/3 never loads the module, and outside embedded
+      # mode (mix dev/test) it may not be loaded yet — without this, a
+      # perfectly valid client is reported as invalid.
+      Code.ensure_loaded(client)
+
       cond do
         client_opts != [] and function_exported?(client, function, length(args) + 1) ->
           apply(client, function, args ++ [client_opts])
@@ -131,7 +136,8 @@ defmodule TimelessTracesDashboard.HistoricalSource.DataPlane do
       compressed_blocks: value(stats, :compressed_blocks, 0),
       compressed_bytes: value(stats, :compressed_bytes, total_bytes),
       compression_raw_bytes_in: value(stats, :extension_compression_input_bytes_total, 0),
-      compression_compressed_bytes_out: value(stats, :extension_compression_output_bytes_total, 0),
+      compression_compressed_bytes_out:
+        value(stats, :extension_compression_output_bytes_total, 0),
       compaction_count: value(stats, :extension_optimize_count, 0),
       oldest_timestamp: value(stats, :oldest_timestamp_nanoseconds, nil),
       newest_timestamp: value(stats, :newest_timestamp_nanoseconds, nil),

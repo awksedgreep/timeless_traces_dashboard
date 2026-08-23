@@ -22,9 +22,12 @@ Phoenix [LiveDashboard](https://github.com/phoenixframework/phoenix_live_dashboa
 
 Provides four tabs:
 
-- **Search** -- query spans with name, service, kind, and status filters + pagination
+- **Search** -- query spans with name, service, kind, and status filters, a
+  visible time-range control, and pagination
 - **Traces** -- look up all spans in a trace by trace ID with waterfall visualization
-- **Stats** -- aggregate metrics (blocks, entries, compressed size, index size, timestamps)
+- **Stats** -- spans, total size, storage mode and engine, raw and compressed
+  blocks, durable compression ratio with storage efficiency, and
+  oldest/newest timestamps
 - **Live Tail** -- real-time streaming of new spans
 
 ## Installation
@@ -92,10 +95,10 @@ Navigate to `/dashboard/traces` in your browser.
 
 ## Experimental Rust traces data plane
 
-The POC branch can route only historical Search and Traces-tab detail through
-the separately supervised `timeless-traces-api` process. Phoenix still owns
-dashboard sessions, state, rendering, stats, and live tail. The default remains
-the embedded `TimelessTraces` source.
+The data-plane source routes historical Search, Traces-tab detail, and Stats
+through the separately supervised `timeless-traces-api` process. Phoenix
+still owns dashboard sessions, state, rendering, and live tail. The default
+remains the embedded `TimelessTraces` source.
 
 Add the executable owner to your application's supervision tree:
 

@@ -80,12 +80,16 @@ defmodule TimelessTracesDashboard.DataPlaneIntegrationTest do
 
       socket = mounted_socket()
 
+      # The fixture spans carry fixed 2023 timestamps; pin the search window
+      # around them so the default now-relative window never ages them out.
       search_params = %{
         "nav" => "search",
         "name" => "contract",
         "service" => "contract-svc",
         "kind" => "",
         "status" => "",
+        "since" => "1699999999",
+        "until" => "1700000001",
         "p" => "1",
         "per_page" => "25"
       }
@@ -253,7 +257,8 @@ defmodule TimelessTracesDashboard.DataPlaneIntegrationTest do
              %{
                "name" => "exception",
                "timestamp" => 1_700_000_000_040_000_000,
-               "attributes" => %{"exception.type" => "ContractError", "handled" => false}
+               "attributes" => %{"exception.type" => "ContractError", "handled" => false},
+               "dropped_attributes_count" => 0
              }
            ]
 
@@ -264,7 +269,12 @@ defmodule TimelessTracesDashboard.DataPlaneIntegrationTest do
              "debug" => false
            }
 
-    assert root.instrumentation_scope == %{"name" => "contract-lib", "version" => "4.5.6"}
+    assert root.instrumentation_scope == %{
+             "name" => "contract-lib",
+             "version" => "4.5.6",
+             "attributes" => %{}
+           }
+
     assert child.parent_span_id == root.span_id
     assert child.attributes == %{"db.system" => "libsql", "rows" => 3}
     assert child.status_message == nil
