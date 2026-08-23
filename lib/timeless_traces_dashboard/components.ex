@@ -912,15 +912,10 @@ defmodule TimelessTracesDashboard.Components do
     max(0, max_end - min_start)
   end
 
-  # Backed by the compression totals the extension persists in the store's
-  # _meta (0.6.2) — durable across restarts, unlike the process-local
-  # optimize profile counters that once fed this tile (which then showed
-  # "pending" on fully compressed stores after every restart). "pending"
-  # now strictly means raw blocks exist and none are compressed yet.
   # The durable headline: what the user's data actually costs on disk.
-  # Unlike the ratio (which only counts optimize passes since extension
-  # 0.6.2 and converges over the retention window), this is exact from the
-  # first stats call.
+  # Exact from the first stats call, computed from bytes_on_disk (data-block
+  # payload only — index, WAL, freelist, and file bytes never appear inside
+  # a compression number).
   defp format_storage_efficiency(stats) do
     n = Map.get(stats, :total_entries, 0)
     bytes = Map.get(stats, :total_bytes, 0)
@@ -936,15 +931,33 @@ defmodule TimelessTracesDashboard.Components do
   defp format_number(n) when n >= 1_000, do: "#{Float.round(n / 1_000, 1)}k"
   defp format_number(n), do: to_string(n)
 
+  # Headline ratio: raw ingested vs stored. The raw side is the engine's
+  # persisted logical-span-bytes counter (ids + kind/status + timings + every
+  # string field, counted once when spans become durable; monotonic under
+  # optimize/prune, restart-safe). The stored side is total_bytes, normalized
+  # from bytes_on_disk — data-block payload only, never index/WAL/freelist/file
+  # bytes.
+  #
+  # Fallback (raw counter absent — older server or pre-upgrade database, where
+  # it reads 0): the codec totals the extension persists in the store's _meta
+  # (0.6.2) — durable across restarts, unlike the process-local optimize
+  # profile counters that once fed this tile (which then showed "pending" on
+  # fully compressed stores after every restart). Those measure pre-codec
+  # columnar block bytes in vs compressed block bytes out — close to, but not
+  # exactly, the logical-row definition above. "pending" strictly means raw
+  # blocks exist and none are compressed yet.
   defp format_compression_ratio(stats) do
+    raw_ingested = Map.get(stats, :raw_ingested_bytes, 0)
+    stored = Map.get(stats, :total_bytes, 0)
     bytes_in = Map.get(stats, :compression_raw_bytes_in, 0)
     bytes_out = Map.get(stats, :compression_compressed_bytes_out, 0)
 
     cond do
+      raw_ingested > 0 and stored > 0 ->
+        format_ratio(raw_ingested, stored)
+
       bytes_in > 0 and bytes_out > 0 ->
-        ratio = bytes_in / bytes_out
-        pct = Float.round((1 - 1 / ratio) * 100, 1)
-        "#{Float.round(ratio, 1)}x (#{pct}% smaller)"
+        format_ratio(bytes_in, bytes_out)
 
       Map.get(stats, :raw_blocks, 0) > 0 and Map.get(stats, :compressed_blocks, 0) == 0 ->
         "pending"
@@ -952,6 +965,12 @@ defmodule TimelessTracesDashboard.Components do
       true ->
         "—"
     end
+  end
+
+  defp format_ratio(bytes_in, bytes_out) do
+    ratio = bytes_in / bytes_out
+    pct = Float.round((1 - 1 / ratio) * 100, 1)
+    "#{Float.round(ratio, 1)}x (#{pct}% smaller)"
   end
 
   defp format_bytes(nil), do: "-"

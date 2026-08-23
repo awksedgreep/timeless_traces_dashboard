@@ -138,6 +138,11 @@ defmodule TimelessTracesDashboard.HistoricalSource.DataPlane do
       compression_raw_bytes_in: value(stats, :extension_compression_input_bytes_total, 0),
       compression_compressed_bytes_out:
         value(stats, :extension_compression_output_bytes_total, 0),
+      # Engine-persisted logical-span bytes (ids + kind/status + timings + all
+      # string fields), counted once when spans become durable. Monotonic under
+      # optimize/prune, restart-safe. Unlike the codec totals above, this key is
+      # served without the extension_ prefix. 0 on pre-upgrade servers/databases.
+      raw_ingested_bytes: value(stats, :raw_ingested_bytes_total, 0),
       compaction_count: value(stats, :extension_optimize_count, 0),
       oldest_timestamp: value(stats, :oldest_timestamp_nanoseconds, nil),
       newest_timestamp: value(stats, :newest_timestamp_nanoseconds, nil),

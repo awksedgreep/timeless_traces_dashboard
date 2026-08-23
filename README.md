@@ -26,7 +26,8 @@ Provides four tabs:
   visible time-range control, and pagination
 - **Traces** -- look up all spans in a trace by trace ID with waterfall visualization
 - **Stats** -- spans, total size, storage mode and engine, raw and compressed
-  blocks, durable compression ratio with storage efficiency, and
+  blocks, durable compression ratio (raw ingested vs stored data blocks —
+  never index, WAL, or whole-file bytes) with storage efficiency, and
   oldest/newest timestamps
 - **Live Tail** -- real-time streaming of new spans
 

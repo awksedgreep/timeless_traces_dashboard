@@ -66,7 +66,13 @@ defmodule TimelessTracesDashboard.HistoricalSourceTest do
        client: TimelessTracesDashboard.DataPlaneSourceFixture}
     )
 
-    assert {:ok, %{total_entries: 3, storage_mode: :libsql}} =
+    assert {:ok,
+            %{
+              total_entries: 3,
+              total_bytes: 90,
+              raw_ingested_bytes: 450,
+              storage_mode: :libsql
+            }} =
              TimelessTracesDashboard.HistoricalSource.stats()
 
     assert {:error, {:unsupported_capability, :traces_live_tail}} =
@@ -107,6 +113,18 @@ defmodule TimelessTracesDashboard.HistoricalSourceTest do
       assert :ok = TimelessTracesDashboard.HistoricalSource.subscribe()
       assert :ok = TimelessTracesDashboard.HistoricalSource.unsubscribe()
     end
+  end
+
+  test "pre-upgrade stats JSON without the raw counter normalizes it to 0" do
+    Application.put_env(
+      :timeless_traces_dashboard,
+      :historical_source,
+      {TimelessTracesDashboard.HistoricalSource.DataPlane,
+       client: TimelessTracesDashboard.LegacyDataPlaneSourceFixture}
+    )
+
+    assert {:ok, %{total_bytes: 90, raw_ingested_bytes: 0}} =
+             TimelessTracesDashboard.HistoricalSource.stats()
   end
 
   test "selected data-plane source fails closed without a configured client" do
@@ -173,6 +191,18 @@ defmodule TimelessTracesDashboard.HistoricalSourceFixture do
 end
 
 defmodule TimelessTracesDashboard.DataPlaneSourceFixture do
+  def stats do
+    {:ok,
+     %{
+       "total_spans" => 3,
+       "bytes_on_disk" => 90,
+       "compressed_blocks" => 1,
+       "raw_ingested_bytes_total" => 450
+     }}
+  end
+end
+
+defmodule TimelessTracesDashboard.LegacyDataPlaneSourceFixture do
   def stats do
     {:ok, %{"total_spans" => 3, "bytes_on_disk" => 90, "compressed_blocks" => 1}}
   end
