@@ -2,6 +2,7 @@ defmodule TimelessTracesDashboard.DataPlaneIntegrationTest do
   use ExUnit.Case, async: false
 
   alias Phoenix.LiveDashboard.PageBuilder
+  alias Phoenix.LiveView.Lifecycle
   alias Phoenix.LiveView.Socket
   alias TimelessTracesDashboard.DataPlane.Client
   alias TimelessTracesDashboard.DataPlane.Process, as: DataPlaneProcess
@@ -95,6 +96,7 @@ defmodule TimelessTracesDashboard.DataPlaneIntegrationTest do
       }
 
       assert {:noreply, searched} = Page.handle_params(search_params, "", socket)
+      searched = await_async(searched, :search)
       assert length(searched.assigns.entries) == 2
 
       assert Enum.map(searched.assigns.entries, & &1.span_id) == [
@@ -107,6 +109,7 @@ defmodule TimelessTracesDashboard.DataPlaneIntegrationTest do
       assert {:noreply, detailed} =
                Page.handle_params(%{"nav" => "traces", "trace_id" => trace_id}, "", searched)
 
+      detailed = await_async(detailed, :trace)
       assert_exact_rich_trace(detailed.assigns.trace_spans)
 
       owner_memory = :erlang.process_info(Process.whereis(name), :memory) |> elem(1)
@@ -159,8 +162,25 @@ defmodule TimelessTracesDashboard.DataPlaneIntegrationTest do
 
   defp mounted_socket do
     page = %PageBuilder{params: %{}, route: :traces, node: nil}
-    socket = %Socket{assigns: %{__changed__: %{}, page: page}}
+
+    socket = %Socket{
+      assigns: %{__changed__: %{}, page: page},
+      root_pid: self(),
+      transport_pid: self(),
+      private: %{live_temp: %{}, lifecycle: %Lifecycle{}}
+    }
+
     assert {:ok, socket} = Page.mount(%{}, %{}, socket)
+    socket
+  end
+
+  defp await_async(socket, key) do
+    {ref, _pid} = Map.fetch!(socket.assigns.async_refs, key)
+    assert_receive {:timeless_dashboard_async, ^key, ^ref, result}, 5_000
+
+    assert {:noreply, socket} =
+             Page.handle_info({:timeless_dashboard_async, key, ref, result}, socket)
+
     socket
   end
 

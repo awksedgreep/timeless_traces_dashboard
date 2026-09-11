@@ -150,5 +150,10 @@ defmodule TimelessTracesDashboard.HistoricalSource.DataPlane do
     }
   end
 
-  defp value(map, key, default), do: Map.get(map, key, Map.get(map, Atom.to_string(key), default))
+  defp value(map, key, default) do
+    case Map.fetch(map, key) do
+      {:ok, value} -> value
+      :error -> Map.get(map, Atom.to_string(key), default)
+    end
+  end
 end

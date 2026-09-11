@@ -2,6 +2,7 @@ defmodule TimelessTracesDashboard.HistoricalSourceTest do
   use ExUnit.Case, async: false
 
   alias Phoenix.LiveDashboard.PageBuilder
+  alias Phoenix.LiveView.Lifecycle
   alias Phoenix.LiveView.Socket
   alias TimelessTracesDashboard.Page
 
@@ -41,10 +42,15 @@ defmodule TimelessTracesDashboard.HistoricalSourceTest do
     }
 
     assert {:noreply, searched} = Page.handle_params(search_params, "", socket)
+    assert searched.assigns.search_loading
+    assert searched.assigns.entries == []
+
+    assert_receive {:historical_query, filters}
+    searched = await_async(searched, :search)
+
     assert searched.assigns.entries == [span]
     assert searched.assigns.has_more == false
 
-    assert_receive {:historical_query, filters}
     assert filters[:name] == "contract"
     assert filters[:service] == "contract-svc"
     assert filters[:since] == 1_700_000_000_000_000_000
@@ -52,10 +58,60 @@ defmodule TimelessTracesDashboard.HistoricalSourceTest do
 
     trace_params = %{"nav" => "traces", "trace_id" => span.trace_id}
     assert {:noreply, detailed} = Page.handle_params(trace_params, "", searched)
+    assert detailed.assigns.trace_loading
+
+    assert_receive {:historical_trace, trace_id}
+    detailed = await_async(detailed, :trace)
+
     assert detailed.assigns.trace_spans == [span]
     assert detailed.assigns.trace_id == span.trace_id
-    assert_receive {:historical_trace, trace_id}
     assert trace_id == span.trace_id
+
+    assert {:noreply, expanded} =
+             Page.handle_event("toggle_span_detail", %{"span_id" => span.span_id}, detailed)
+
+    assert MapSet.member?(expanded.assigns.expanded_spans, span.span_id)
+    assert Map.has_key?(expanded.assigns.expanded_span_details, span.span_id)
+
+    assert {:noreply, next_trace} =
+             Page.handle_params(
+               %{"nav" => "traces", "trace_id" => String.duplicate("f", 32)},
+               "",
+               expanded
+             )
+
+    assert next_trace.assigns.expanded_spans == MapSet.new()
+    assert next_trace.assigns.expanded_span_details == %{}
+  end
+
+  test "leaving live tail unsubscribes and ignores later span messages" do
+    span = rich_span()
+
+    Application.put_env(
+      :timeless_traces_dashboard,
+      :historical_source,
+      {TimelessTracesDashboard.HistoricalSourceFixture, span: span, notify: self()}
+    )
+
+    socket = mounted_socket()
+    assert {:noreply, tail} = Page.handle_params(%{"nav" => "tail"}, "", socket)
+    assert tail.assigns.subscribed
+    assert_receive :historical_subscribe
+
+    assert {:noreply, streamed} = Page.handle_info({:timeless_traces, :span, span}, tail)
+    assert streamed.assigns.tail_count == 1
+    refute Map.has_key?(streamed.assigns, :tail_entries)
+
+    assert {:noreply, searched} =
+             Page.handle_params(%{"nav" => "search", "window" => "all"}, "", streamed)
+
+    refute searched.assigns.subscribed
+    assert_receive :historical_unsubscribe
+
+    assert {:noreply, unchanged} =
+             Page.handle_info({:timeless_traces, :span, span}, searched)
+
+    assert unchanged.assigns.tail_count == 1
   end
 
   test "stats use the same source and Rust mode rejects live tail without fallback" do
@@ -140,8 +196,25 @@ defmodule TimelessTracesDashboard.HistoricalSourceTest do
 
   defp mounted_socket do
     page = %PageBuilder{params: %{}, route: :traces, node: nil}
-    socket = %Socket{assigns: %{__changed__: %{}, page: page}}
+
+    socket = %Socket{
+      assigns: %{__changed__: %{}, page: page},
+      root_pid: self(),
+      transport_pid: self(),
+      private: %{live_temp: %{}, lifecycle: %Lifecycle{}}
+    }
+
     assert {:ok, socket} = Page.mount(%{}, %{}, socket)
+    socket
+  end
+
+  defp await_async(socket, key) do
+    {ref, _pid} = Map.fetch!(socket.assigns.async_refs, key)
+    assert_receive {:timeless_dashboard_async, ^key, ^ref, result}
+
+    assert {:noreply, socket} =
+             Page.handle_info({:timeless_dashboard_async, key, ref, result}, socket)
+
     socket
   end
 
@@ -184,10 +257,20 @@ defmodule TimelessTracesDashboard.HistoricalSourceFixture do
   def stats(_opts), do: {:ok, %{total_entries: 1}}
 
   @impl true
-  def subscribe(_opts), do: :ok
+  def subscribe(opts) do
+    notify(opts, :historical_subscribe)
+    :ok
+  end
 
   @impl true
-  def unsubscribe(_opts), do: :ok
+  def unsubscribe(opts) do
+    notify(opts, :historical_unsubscribe)
+    :ok
+  end
+
+  defp notify(opts, message) do
+    if pid = Keyword.get(opts, :notify), do: send(pid, message)
+  end
 end
 
 defmodule TimelessTracesDashboard.DataPlaneSourceFixture do

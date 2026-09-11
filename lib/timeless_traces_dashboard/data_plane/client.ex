@@ -39,8 +39,7 @@ defmodule TimelessTracesDashboard.DataPlane.Client do
     with true <- valid_id?(trace_id, 32) || {:error, :invalid_trace_id},
          {:ok, body} <- get_json("/select/timeless/api/traces/#{trace_id}", %{}, opts),
          %{"spans" => spans} when is_list(spans) <- body,
-         {:ok, spans} <- decode_spans(spans),
-         true <- Enum.all?(spans, &(&1.trace_id == trace_id)) || {:error, :trace_id_mismatch} do
+         {:ok, spans} <- decode_spans(spans, trace_id) do
       {:ok, spans}
     else
       {:error, _reason} = error -> error
@@ -157,12 +156,18 @@ defmodule TimelessTracesDashboard.DataPlane.Client do
 
   defp decode_search(_body), do: {:error, :invalid_search_response}
 
-  defp decode_spans(spans) do
+  defp decode_spans(spans, expected_trace_id \\ nil) do
     spans
     |> Enum.reduce_while({:ok, []}, fn span, {:ok, decoded} ->
       case decode_span(span) do
-        {:ok, span} -> {:cont, {:ok, [span | decoded]}}
-        {:error, reason} -> {:halt, {:error, {:invalid_span, reason}}}
+        {:ok, span} when expected_trace_id in [nil, span.trace_id] ->
+          {:cont, {:ok, [span | decoded]}}
+
+        {:ok, _span} ->
+          {:halt, {:error, :trace_id_mismatch}}
+
+        {:error, reason} ->
+          {:halt, {:error, {:invalid_span, reason}}}
       end
     end)
     |> case do
@@ -231,10 +236,17 @@ defmodule TimelessTracesDashboard.DataPlane.Client do
   defp valid_optional_id?(value, width), do: valid_id?(value, width)
 
   defp valid_id?(value, width) when is_binary(value) and byte_size(value) == width do
-    value =~ ~r/\A[0-9a-f]+\z/
+    valid_hex?(value)
   end
 
   defp valid_id?(_value, _width), do: false
+
+  defp valid_hex?(<<>>), do: true
+
+  defp valid_hex?(<<byte, rest::binary>>) when byte in ?0..?9 or byte in ?a..?f,
+    do: valid_hex?(rest)
+
+  defp valid_hex?(_value), do: false
 
   defp encode_param(%DateTime{} = value), do: DateTime.to_unix(value, :nanosecond)
   defp encode_param(value) when is_atom(value), do: Atom.to_string(value)

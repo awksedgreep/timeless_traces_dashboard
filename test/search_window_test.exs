@@ -14,62 +14,9 @@ defmodule TimelessTracesDashboard.SearchWindowTest do
 
   use ExUnit.Case, async: false
 
-  alias Phoenix.LiveDashboard.PageBuilder
   alias TimelessTracesDashboard.{Components, Page}
 
-  defmodule Recorder do
-    @moduledoc false
-    @behaviour TimelessTracesDashboard.HistoricalSource
-
-    @impl true
-    def query(filters, _opts) do
-      send(self(), {:query_filters, filters})
-      {:ok, %{entries: [], total: 0, has_more: false}}
-    end
-
-    @impl true
-    def trace(_id, _opts), do: {:ok, []}
-
-    @impl true
-    def stats(_opts), do: {:ok, %{}}
-
-    @impl true
-    def subscribe(_opts), do: :ok
-
-    @impl true
-    def unsubscribe(_opts), do: :ok
-  end
-
-  setup do
-    previous = Application.get_env(:timeless_traces_dashboard, :historical_source)
-    Application.put_env(:timeless_traces_dashboard, :historical_source, Recorder)
-
-    on_exit(fn ->
-      if previous,
-        do: Application.put_env(:timeless_traces_dashboard, :historical_source, previous),
-        else: Application.delete_env(:timeless_traces_dashboard, :historical_source)
-    end)
-
-    :ok
-  end
-
-  defp search(params) do
-    socket = %Phoenix.LiveView.Socket{
-      assigns: %{
-        __changed__: %{},
-        page: %PageBuilder{params: params, route: :traces, node: nil},
-        per_page: 25
-      }
-    }
-
-    Page.handle_params(Map.put(params, "nav", "search"), "/", socket)
-
-    receive do
-      {:query_filters, filters} -> filters
-    after
-      0 -> flunk("the page never queried the historical source")
-    end
-  end
+  defp search(params), do: Page.search_query_options(params)
 
   test "a search with no explicit range is bounded to the last 24 hours" do
     filters = search(%{"name" => "GET /"})
@@ -110,6 +57,25 @@ defmodule TimelessTracesDashboard.SearchWindowTest do
     day_ago_ns = (DateTime.utc_now() |> DateTime.to_unix()) * 1_000_000_000 - 86_400_000_000_000
 
     assert_in_delta since, day_ago_ns, 60_000_000_000
+  end
+
+  test "malformed numeric and enum parameters use safe defaults" do
+    filters =
+      search(%{
+        "p" => "not-an-integer",
+        "per_page" => "25oops",
+        "since" => "invalid",
+        "until" => "also-invalid",
+        "kind" => "not-a-kind",
+        "status" => "not-a-status"
+      })
+
+    assert filters[:offset] == 0
+    assert filters[:limit] == 25
+    assert is_integer(filters[:since])
+    refute Keyword.has_key?(filters, :until)
+    refute Keyword.has_key?(filters, :kind)
+    refute Keyword.has_key?(filters, :status)
   end
 
   test "page two keeps the bound and shifts the offset" do

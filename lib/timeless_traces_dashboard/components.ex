@@ -5,8 +5,9 @@ defmodule TimelessTracesDashboard.Components do
   # --- Search tab ---
 
   attr(:entries, :list, required: true)
+  attr(:entry_count, :integer, required: true)
+  attr(:loading, :boolean, default: false)
   attr(:total, :integer, required: true)
-  attr(:search, :string, required: true)
   attr(:name, :string, required: true)
   attr(:service, :string, required: true)
   attr(:window, :string, required: true)
@@ -89,7 +90,7 @@ defmodule TimelessTracesDashboard.Components do
         <div class="card-body p-0">
           <div class="d-flex justify-content-between align-items-center px-3 py-2">
             <small class="text-muted">
-              Showing {length(@entries)} {if length(@entries) == 1, do: "span", else: "spans"}
+              Showing {@entry_count} {if @entry_count == 1, do: "span", else: "spans"}
             </small>
             <small class="text-muted">
               Page {@current_page}
@@ -108,10 +109,12 @@ defmodule TimelessTracesDashboard.Components do
               </tr>
             </thead>
             <tbody>
-              <tr :if={@entries == []}>
-                <td colspan="7" class="text-center text-muted py-4">No spans found.</td>
+              <tr :if={@loading or @entries == []}>
+                <td colspan="7" class="text-center text-muted py-4">
+                  {if @loading, do: "Loading spans...", else: "No spans found."}
+                </td>
               </tr>
-              <.span_row :for={span <- @entries} span={span} />
+              <.span_row :for={row <- @entries} row={row} />
             </tbody>
           </table>
           <.pagination
@@ -133,27 +136,28 @@ defmodule TimelessTracesDashboard.Components do
     """
   end
 
-  attr(:span, :any, required: true)
+  attr(:row, :map, required: true)
+  attr(:id, :string, default: nil)
 
   defp span_row(assigns) do
-    trace_id = assigns.span.trace_id || ""
+    trace_id = assigns.row.span.trace_id || ""
     assigns = assign(assigns, :trace_id, trace_id)
 
     ~H"""
-    <tr phx-click="lookup_trace" phx-value-trace_id={@trace_id} style="cursor: pointer;">
+    <tr id={@id} phx-click="lookup_trace" phx-value-trace_id={@trace_id} style="cursor: pointer;">
       <td class="text-monospace" style="font-size: 0.8rem;">
-        {format_timestamp(@span.start_time)}
+        {@row.timestamp}
       </td>
       <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-        {@span.name}
+        {@row.span.name}
       </td>
       <td style="font-size: 0.85rem;">
-        {get_service(@span)}
+        {@row.service}
       </td>
-      <td><.kind_badge kind={@span.kind} /></td>
-      <td><.status_badge status={@span.status} /></td>
+      <td><.kind_badge kind={@row.span.kind} /></td>
+      <td><.status_badge status={@row.span.status} /></td>
       <td class="text-monospace" style="font-size: 0.8rem;">
-        {format_duration(@span.duration_ns)}
+        {format_duration(@row.span.duration_ns)}
       </td>
       <td class="text-monospace" style="font-size: 0.75rem;" title={@trace_id}>
         {String.slice(@trace_id, 0..11)}<span class="text-muted">...</span>
@@ -295,45 +299,17 @@ defmodule TimelessTracesDashboard.Components do
     "#bab0ac"
   ]
 
-  attr(:spans, :list, required: true)
+  attr(:trace, :map, required: true)
+  attr(:loading, :boolean, default: false)
   attr(:trace_id_input, :string, required: true)
   attr(:trace_id, :any, required: true)
   attr(:lookup_us, :any, default: nil)
   attr(:expanded_spans, :any, default: MapSet.new())
+  attr(:expanded_span_details, :map, default: %{})
   attr(:page, :any, default: nil)
   attr(:socket, :any, default: nil)
 
   def trace_tab(assigns) do
-    assigns =
-      if assigns.trace_id && assigns.spans != [] do
-        tree = build_span_tree(assigns.spans)
-        flat = flatten_tree(tree, 0)
-        trace_start = assigns.spans |> Enum.map(& &1.start_time) |> Enum.min()
-        trace_end = assigns.spans |> Enum.map(& &1.end_time) |> Enum.max()
-        trace_dur = max(1, trace_end - trace_start)
-
-        services =
-          assigns.spans
-          |> Enum.map(&get_service/1)
-          |> Enum.uniq()
-          |> Enum.with_index()
-          |> Map.new(fn {svc, i} ->
-            {svc, Enum.at(@service_colors, rem(i, length(@service_colors)))}
-          end)
-
-        assigns
-        |> assign(:tree_rows, flat)
-        |> assign(:trace_start, trace_start)
-        |> assign(:trace_dur, trace_dur)
-        |> assign(:service_colors, services)
-      else
-        assigns
-        |> assign(:tree_rows, [])
-        |> assign(:trace_start, 0)
-        |> assign(:trace_dur, 1)
-        |> assign(:service_colors, %{})
-      end
-
     ~H"""
     <div class="mb-4">
       <form phx-submit="lookup_trace" class="d-flex align-items-end mb-3" style="gap: 0.75rem;">
@@ -351,7 +327,7 @@ defmodule TimelessTracesDashboard.Components do
         <button type="submit" class="btn btn-primary btn-sm">Lookup</button>
       </form>
 
-      <div :if={@trace_id && @spans != []} class="card">
+      <div :if={@trace_id && @trace.count > 0} class="card">
         <div class="card-body p-0">
           <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
             <div>
@@ -360,20 +336,20 @@ defmodule TimelessTracesDashboard.Components do
             </div>
             <div class="d-flex align-items-center" style="gap: 1rem;">
               <small class="text-muted">
-                {length(@spans)} {if length(@spans) == 1, do: "span", else: "spans"}
+                {@trace.count} {if @trace.count == 1, do: "span", else: "spans"}
               </small>
               <small :if={@lookup_us} class="text-muted" title="Trace lookup time">
                 {format_lookup_time(@lookup_us)}
               </small>
               <span class="fw-semibold" style="font-size: 0.85rem;">
-                {format_duration(trace_duration(@spans))}
+                {format_duration(@trace.duration)}
               </span>
             </div>
           </div>
           <%!-- Service legend --%>
           <div class="d-flex flex-wrap px-3 py-2 border-bottom" style="gap: 0.75rem;">
             <div
-              :for={{svc, color} <- @service_colors}
+              :for={{svc, color} <- @trace.service_colors}
               class="d-flex align-items-center"
               style="gap: 0.3rem;"
             >
@@ -389,14 +365,16 @@ defmodule TimelessTracesDashboard.Components do
             </div>
             <div class="flex-grow-1 d-flex justify-content-between px-2" style="padding: 4px 0;">
               <span>0ms</span>
-              <span>{format_duration(div(@trace_dur, 4))}</span>
-              <span>{format_duration(div(@trace_dur, 2))}</span>
-              <span>{format_duration(div(@trace_dur * 3, 4))}</span>
-              <span>{format_duration(@trace_dur)}</span>
+              <span>{format_duration(div(@trace.duration, 4))}</span>
+              <span>{format_duration(div(@trace.duration, 2))}</span>
+              <span>{format_duration(div(@trace.duration * 3, 4))}</span>
+              <span>{format_duration(@trace.duration)}</span>
             </div>
           </div>
           <%!-- Span rows --%>
-          <div :for={{span, depth} <- @tree_rows}>
+          <div :for={row <- @trace.rows}>
+            <% span = row.span %>
+            <% depth = row.depth %>
             <div
               class="waterfall-row d-flex border-bottom"
               style={"font-size: 0.8rem; cursor: pointer; #{if span.status == :error, do: "background: #fff5f5;", else: ""}"}
@@ -411,18 +389,18 @@ defmodule TimelessTracesDashboard.Components do
                   style="font-size: 0.7rem;"
                 >&#x2514;</span>
                 <span
-                  style={"color: #{Map.get(@service_colors, get_service(span), "#888")}; font-weight: 600; font-size: 0.75rem;"}
-                >{get_service(span)}</span>
+                  style={"color: #{row.color}; font-weight: 600; font-size: 0.75rem;"}
+                >{row.service}</span>
                 <span class="text-muted mx-1" style="font-size: 0.65rem;">&#x25B8;</span>
                 <span title={span.name}>{span.name}</span>
                 <.status_dot status={span.status} />
               </div>
               <%!-- Right panel: waterfall bar --%>
               <div class="flex-grow-1 position-relative" style="padding: 4px 8px;">
-                <% offset_pct = (span.start_time - @trace_start) / @trace_dur * 100 %>
-                <% width_pct = max(0.3, span.duration_ns / @trace_dur * 100) %>
+                <% offset_pct = (span.start_time - @trace.start) / @trace.duration * 100 %>
+                <% width_pct = max(0.3, span.duration_ns / @trace.duration * 100) %>
                 <div
-                  style={"position: absolute; top: 5px; bottom: 5px; left: #{offset_pct}%; width: #{width_pct}%; background: #{Map.get(@service_colors, get_service(span), "#888")}; border-radius: 3px; min-width: 2px; opacity: 0.85;"}
+                  style={"position: absolute; top: 5px; bottom: 5px; left: #{offset_pct}%; width: #{width_pct}%; background: #{row.color}; border-radius: 3px; min-width: 2px; opacity: 0.85;"}
                   title={"#{span.name} — #{format_duration(span.duration_ns)}"}
                 >
                   <span
@@ -443,7 +421,8 @@ defmodule TimelessTracesDashboard.Components do
             <.span_detail
               :if={MapSet.member?(@expanded_spans, span.span_id)}
               span={span}
-              service_color={Map.get(@service_colors, get_service(span), "#888")}
+              detail={Map.fetch!(@expanded_span_details, span.span_id)}
+              service_color={row.color}
               trace_id={@trace_id}
               page={@page}
               socket={@socket}
@@ -453,10 +432,14 @@ defmodule TimelessTracesDashboard.Components do
         </div>
       </div>
 
-      <div :if={@trace_id && @spans == []} class="card">
+      <div :if={@trace_id && @trace.count == 0 and not @loading} class="card">
         <div class="card-body text-center text-muted py-4">
           No spans found for this trace.
         </div>
+      </div>
+
+      <div :if={@trace_id && @loading} class="text-center text-muted py-4">
+        Loading trace...
       </div>
 
       <div :if={@trace_id == nil} class="text-center text-muted py-4">
@@ -491,21 +474,13 @@ defmodule TimelessTracesDashboard.Components do
   # --- Span detail panel ---
 
   attr(:span, :any, required: true)
+  attr(:detail, :map, required: true)
   attr(:service_color, :string, required: true)
   attr(:trace_id, :any, default: nil)
   attr(:page, :any, default: nil)
   attr(:socket, :any, default: nil)
 
   defp span_detail(assigns) do
-    attrs = (assigns.span.attributes || %{}) |> Map.delete("service.name") |> Enum.sort()
-    resource = (assigns.span.resource || %{}) |> Map.delete("service.name") |> Enum.sort()
-
-    events =
-      (assigns.span.events || [])
-      |> Enum.map(&normalize_event/1)
-
-    scope = Map.get(assigns.span, :instrumentation_scope) || Map.get(assigns.span, :scope)
-
     logs_link =
       if assigns.trace_id && assigns.socket && assigns.page do
         # Convert nanosecond span times to seconds for log filtering
@@ -527,10 +502,6 @@ defmodule TimelessTracesDashboard.Components do
 
     assigns =
       assigns
-      |> assign(:attrs, attrs)
-      |> assign(:resource, resource)
-      |> assign(:events, events)
-      |> assign(:scope, scope)
       |> assign(:logs_link, logs_link)
 
     ~H"""
@@ -555,14 +526,14 @@ defmodule TimelessTracesDashboard.Components do
       </div>
 
       <%!-- Attributes --%>
-      <div :if={@attrs != []}>
+      <div :if={@detail.attributes != []}>
         <small class="text-muted fw-semibold">Attributes</small>
         <table class="table table-sm table-bordered mb-2" style="font-size: 0.75rem; background: #fff;">
           <tbody>
-            <tr :for={{k, v} <- @attrs}>
-              <td style="width: 30%; font-weight: 500; word-break: break-all;">{k}</td>
-              <td style="font-family: monospace; word-break: break-all;" title={inspect(v)}>
-                {format_attr_value(v)}
+            <tr :for={attr <- @detail.attributes}>
+              <td style="width: 30%; font-weight: 500; word-break: break-all;">{attr.key}</td>
+              <td style="font-family: monospace; word-break: break-all;" title={attr.value}>
+                {attr.value}
               </td>
             </tr>
           </tbody>
@@ -570,14 +541,14 @@ defmodule TimelessTracesDashboard.Components do
       </div>
 
       <%!-- Resource --%>
-      <div :if={@resource != []}>
+      <div :if={@detail.resource != []}>
         <small class="text-muted fw-semibold">Resource</small>
         <table class="table table-sm table-bordered mb-2" style="font-size: 0.75rem; background: #fff;">
           <tbody>
-            <tr :for={{k, v} <- @resource}>
-              <td style="width: 30%; font-weight: 500; word-break: break-all;">{k}</td>
-              <td style="font-family: monospace; word-break: break-all;" title={inspect(v)}>
-                {format_attr_value(v)}
+            <tr :for={attr <- @detail.resource}>
+              <td style="width: 30%; font-weight: 500; word-break: break-all;">{attr.key}</td>
+              <td style="font-family: monospace; word-break: break-all;" title={attr.value}>
+                {attr.value}
               </td>
             </tr>
           </tbody>
@@ -585,13 +556,13 @@ defmodule TimelessTracesDashboard.Components do
       </div>
 
       <%!-- Events --%>
-      <div :if={@events != []}>
+      <div :if={@detail.events != []}>
         <small class="text-muted fw-semibold">Events</small>
-        <div :for={event <- @events} class="card mb-1" style="font-size: 0.75rem;">
+        <div :for={event <- @detail.events} class="card mb-1" style="font-size: 0.75rem;">
           <div class="card-body p-2">
             <div class="d-flex justify-content-between mb-1">
               <span class="fw-semibold">{event.name}</span>
-              <small class="text-muted">{format_timestamp(event.timestamp)}</small>
+              <small class="text-muted">{event.timestamp}</small>
             </div>
             <table
               :if={event.attributes != nil and event.attributes != %{} and event.attributes != []}
@@ -599,10 +570,10 @@ defmodule TimelessTracesDashboard.Components do
               style="font-size: 0.7rem; background: #fff;"
             >
               <tbody>
-                <tr :for={{k, v} <- Enum.sort(to_map(event.attributes))}>
-                  <td style="width: 30%; font-weight: 500; word-break: break-all;">{k}</td>
-                  <td style="font-family: monospace; word-break: break-all; white-space: pre-wrap;" title={inspect(v)}>
-                    {format_attr_value(v)}
+                <tr :for={attr <- event.attributes}>
+                  <td style="width: 30%; font-weight: 500; word-break: break-all;">{attr.key}</td>
+                  <td style="font-family: monospace; word-break: break-all; white-space: pre-wrap;" title={attr.value}>
+                    {attr.value}
                   </td>
                 </tr>
               </tbody>
@@ -612,11 +583,11 @@ defmodule TimelessTracesDashboard.Components do
       </div>
 
       <%!-- Instrumentation Scope --%>
-      <div :if={@scope} class="mt-1">
+      <div :if={@detail.scope} class="mt-1">
         <small class="text-muted fw-semibold">Instrumentation Scope</small>
         <div style="font-size: 0.75rem;">
-          <span>{scope_name(@scope)}</span>
-          <small :if={scope_version(@scope)} class="text-muted ms-1">v{scope_version(@scope)}</small>
+          <span>{scope_name(@detail.scope)}</span>
+          <small :if={scope_version(@detail.scope)} class="text-muted ms-1">v{scope_version(@detail.scope)}</small>
         </div>
       </div>
 
@@ -644,8 +615,21 @@ defmodule TimelessTracesDashboard.Components do
     if msg && msg != "", do: msg, else: nil
   end
 
-  defp format_attr_value(v) when is_binary(v), do: v
-  defp format_attr_value(v), do: inspect(v)
+  @attr_value_limit 500
+
+  defp format_attr_value(v) when is_binary(v), do: truncate(v, @attr_value_limit)
+
+  defp format_attr_value(v) do
+    v
+    |> inspect(limit: 50, printable_limit: @attr_value_limit)
+    |> truncate(@attr_value_limit)
+  end
+
+  defp truncate(value, limit) do
+    if String.length(value) > limit,
+      do: String.slice(value, 0, limit) <> "…",
+      else: value
+  end
 
   defp to_map(attrs) when is_map(attrs), do: attrs
   defp to_map(attrs) when is_list(attrs), do: Map.new(attrs)
@@ -697,14 +681,111 @@ defmodule TimelessTracesDashboard.Components do
     end)
   end
 
+  @doc false
+  def prepare_span_row(span) do
+    %{span: span, service: get_service(span), timestamp: format_timestamp(span.start_time)}
+  end
+
+  @doc false
+  def prepare_span_rows(spans), do: Enum.map(spans, &prepare_span_row/1)
+
+  @doc false
+  def prepare_trace([]) do
+    %{rows: [], start: 0, duration: 1, count: 0, service_colors: %{}}
+  end
+
+  def prepare_trace(spans) do
+    {trace_start, trace_end} =
+      Enum.reduce(spans, {nil, nil}, fn span, {min_start, max_end} ->
+        {min_value(min_start, span.start_time), max_value(max_end, span.end_time)}
+      end)
+
+    services =
+      spans
+      |> Enum.map(&get_service/1)
+      |> Enum.uniq()
+      |> Enum.with_index()
+      |> Map.new(fn {service, index} ->
+        {service, Enum.at(@service_colors, rem(index, length(@service_colors)))}
+      end)
+
+    rows =
+      spans
+      |> build_span_tree()
+      |> flatten_tree(0)
+      |> Enum.map(fn {span, depth} ->
+        service = get_service(span)
+
+        %{
+          span: span,
+          depth: depth,
+          service: service,
+          color: Map.fetch!(services, service)
+        }
+      end)
+
+    %{
+      rows: rows,
+      start: trace_start,
+      duration: max(1, trace_end - trace_start),
+      count: length(spans),
+      service_colors: services
+    }
+  end
+
+  @doc false
+  def prepare_span_detail(span) do
+    events =
+      (span.events || [])
+      |> Enum.map(&normalize_event/1)
+      |> Enum.map(fn event ->
+        %{
+          name: Map.get(event, :name) || Map.get(event, "name") || "unknown",
+          timestamp: format_timestamp(Map.get(event, :timestamp) || Map.get(event, "timestamp")),
+          attributes:
+            event
+            |> Map.get(:attributes, Map.get(event, "attributes", %{}))
+            |> prepare_attributes()
+        }
+      end)
+
+    %{
+      attributes:
+        span.attributes
+        |> Kernel.||(%{})
+        |> Map.delete("service.name")
+        |> prepare_attributes(),
+      resource:
+        span.resource
+        |> Kernel.||(%{})
+        |> Map.delete("service.name")
+        |> prepare_attributes(),
+      events: events,
+      scope: Map.get(span, :instrumentation_scope) || Map.get(span, :scope)
+    }
+  end
+
+  defp prepare_attributes(attributes) do
+    attributes
+    |> to_map()
+    |> Enum.sort()
+    |> Enum.map(fn {key, value} -> %{key: key, value: format_attr_value(value)} end)
+  end
+
+  defp min_value(nil, value), do: value
+  defp min_value(left, right), do: min(left, right)
+  defp max_value(nil, value), do: value
+  defp max_value(left, right), do: max(left, right)
+
   # --- Stats tab ---
 
   attr(:stats, :any, required: true)
+  attr(:loading, :boolean, default: false)
 
   def stats_tab(assigns) do
     ~H"""
     <div :if={@stats == nil} class="text-center text-muted py-4">
-      Loading stats...
+      {if @loading, do: "Loading stats...", else: "Stats unavailable."}
     </div>
     <div :if={@stats} class="row">
       <div class="col-sm-4 mb-3">
@@ -798,7 +879,8 @@ defmodule TimelessTracesDashboard.Components do
 
   # --- Live Tail tab ---
 
-  attr(:entries, :list, required: true)
+  attr(:entries, :any, required: true)
+  attr(:count, :integer, required: true)
   attr(:subscribed, :boolean, required: true)
   attr(:error, :string, default: nil)
 
@@ -815,7 +897,7 @@ defmodule TimelessTracesDashboard.Components do
         </button>
         <small class="text-muted">
           <%= if @subscribed do %>
-            Streaming... ({length(@entries)} spans)
+            Streaming... ({@count} spans)
           <% else %>
             Paused
           <% end %>
@@ -836,17 +918,15 @@ defmodule TimelessTracesDashboard.Components do
                 <th style="width: 140px;">Trace ID</th>
               </tr>
             </thead>
-            <tbody>
-              <tr :if={@entries == []}>
-                <td colspan="7" class="text-center text-muted py-4">
-                  {if @subscribed,
-                    do: "Waiting for spans...",
-                    else: "Click Start to begin streaming."}
-                </td>
-              </tr>
-              <.span_row :for={span <- @entries} span={span} />
+            <tbody id="tail-entries" class="tail-stream" phx-update="stream">
+              <.span_row :for={{dom_id, row} <- @entries} id={dom_id} row={row} />
             </tbody>
           </table>
+          <div :if={@count == 0} class="text-center text-muted py-4">
+            {if @subscribed,
+              do: "Waiting for spans...",
+              else: "Click Start to begin streaming."}
+          </div>
         </div>
       </div>
     </div>
@@ -905,12 +985,6 @@ defmodule TimelessTracesDashboard.Components do
 
   defp format_lookup_time(us) when us >= 1000, do: "found in #{Float.round(us / 1000, 1)}ms"
   defp format_lookup_time(us), do: "found in #{us}us"
-
-  defp trace_duration(spans) do
-    min_start = spans |> Enum.map(& &1.start_time) |> Enum.min()
-    max_end = spans |> Enum.map(& &1.end_time) |> Enum.max()
-    max(0, max_end - min_start)
-  end
 
   # The durable headline: what the user's data actually costs on disk.
   # Exact from the first stats call, computed from bytes_on_disk (data-block

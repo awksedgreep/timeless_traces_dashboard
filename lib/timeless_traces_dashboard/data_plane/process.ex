@@ -16,7 +16,8 @@ defmodule TimelessTracesDashboard.DataPlane.Process do
 
   @default_name __MODULE__
   @ready_prefix "timeless-traces-api listening on "
-  @shutdown_timeout 8_000
+  @shutdown_timeout 5_000
+  @max_partial_line_bytes 65_536
 
   def child_spec(opts) do
     %{
@@ -33,7 +34,7 @@ defmodule TimelessTracesDashboard.DataPlane.Process do
   end
 
   def await_ready(server \\ @default_name, timeout \\ 10_000) do
-    GenServer.call(server, :await_ready, timeout)
+    GenServer.call(server, {:await_ready, timeout}, call_timeout(timeout))
   end
 
   def endpoint(server \\ @default_name), do: GenServer.call(server, :endpoint)
@@ -52,7 +53,7 @@ defmodule TimelessTracesDashboard.DataPlane.Process do
          endpoint: "http://#{config.listen}",
          kill_executable: config.kill_executable,
          ready?: false,
-         waiters: [],
+         waiters: %{},
          partial_line: ""
        }}
     else
@@ -61,12 +62,23 @@ defmodule TimelessTracesDashboard.DataPlane.Process do
   end
 
   @impl true
-  def handle_call(:await_ready, _from, %{ready?: true} = state) do
+  def handle_call({:await_ready, _timeout}, _from, %{ready?: true} = state) do
     {:reply, {:ok, state.endpoint}, state}
   end
 
-  def handle_call(:await_ready, from, state) do
-    {:noreply, %{state | waiters: [from | state.waiters]}}
+  def handle_call({:await_ready, timeout}, {pid, _tag} = from, state)
+      when is_integer(timeout) and timeout >= 0 do
+    ref = make_ref()
+    monitor = Process.monitor(pid)
+    timer = Process.send_after(self(), {:waiter_timeout, ref}, timeout)
+    waiter = %{from: from, monitor: monitor, timer: timer}
+    {:noreply, %{state | waiters: Map.put(state.waiters, ref, waiter)}}
+  end
+
+  def handle_call({:await_ready, :infinity}, {pid, _tag} = from, state) do
+    ref = make_ref()
+    waiter = %{from: from, monitor: Process.monitor(pid), timer: nil}
+    {:noreply, %{state | waiters: Map.put(state.waiters, ref, waiter)}}
   end
 
   def handle_call(:endpoint, _from, state), do: {:reply, state.endpoint, state}
@@ -89,7 +101,37 @@ defmodule TimelessTracesDashboard.DataPlane.Process do
   end
 
   def handle_info({port, {:data, {:noeol, line}}}, %{port: port} = state) do
-    {:noreply, %{state | partial_line: state.partial_line <> line}}
+    partial_line = state.partial_line <> line
+
+    if byte_size(partial_line) > @max_partial_line_bytes do
+      Logger.warning(
+        "traces data plane discarded an unterminated output line larger than #{@max_partial_line_bytes} bytes"
+      )
+
+      {:noreply, %{state | partial_line: ""}}
+    else
+      {:noreply, %{state | partial_line: partial_line}}
+    end
+  end
+
+  def handle_info({:waiter_timeout, ref}, state) do
+    case Map.pop(state.waiters, ref) do
+      {nil, _waiters} ->
+        {:noreply, state}
+
+      {%{from: from, monitor: monitor}, waiters} ->
+        Process.demonitor(monitor, [:flush])
+        GenServer.reply(from, {:error, :ready_timeout})
+        {:noreply, %{state | waiters: waiters}}
+    end
+  end
+
+  def handle_info({:DOWN, monitor, :process, _pid, _reason}, state) do
+    {expired, waiters} =
+      Enum.split_with(state.waiters, fn {_ref, waiter} -> waiter.monitor == monitor end)
+
+    Enum.each(expired, fn {_ref, waiter} -> cancel_timer(waiter.timer) end)
+    {:noreply, %{state | waiters: Map.new(waiters)}}
   end
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
@@ -146,8 +188,13 @@ defmodule TimelessTracesDashboard.DataPlane.Process do
 
   defp consume_line(line, state) do
     if String.starts_with?(line, @ready_prefix) do
-      Enum.each(state.waiters, &GenServer.reply(&1, {:ok, state.endpoint}))
-      %{state | ready?: true, waiters: []}
+      Enum.each(state.waiters, fn {_ref, waiter} ->
+        cancel_timer(waiter.timer)
+        Process.demonitor(waiter.monitor, [:flush])
+        GenServer.reply(waiter.from, {:ok, state.endpoint})
+      end)
+
+      %{state | ready?: true, waiters: %{}}
     else
       Logger.debug("traces data plane: #{line}")
       state
@@ -242,4 +289,10 @@ defmodule TimelessTracesDashboard.DataPlane.Process do
 
   defp option(opts, key, default) when is_map(opts), do: Map.get(opts, key, default)
   defp option(opts, key, default) when is_list(opts), do: Keyword.get(opts, key, default)
+
+  defp call_timeout(:infinity), do: :infinity
+  defp call_timeout(timeout) when is_integer(timeout), do: timeout + 1_000
+
+  defp cancel_timer(nil), do: :ok
+  defp cancel_timer(timer), do: Process.cancel_timer(timer)
 end

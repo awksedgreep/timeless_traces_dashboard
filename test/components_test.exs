@@ -54,4 +54,88 @@ defmodule TimelessTracesDashboard.ComponentsTest do
 
     assert html =~ "pending"
   end
+
+  test "span rows precompute service and timestamp display values" do
+    span = span("child", "parent", 1_700_000_000_000_000_000)
+    row = Components.prepare_span_row(span)
+
+    assert row.span == span
+    assert row.service == "contract-svc"
+    assert row.timestamp == "2023-11-14 22:13:20"
+  end
+
+  test "trace presentation is built once with tree depth and duration" do
+    child = span("child", "root", 120)
+    root = span("root", nil, 100)
+    trace = Components.prepare_trace([child, root])
+
+    assert trace.count == 2
+    assert trace.start == 100
+    assert trace.duration == 30
+
+    assert Enum.map(trace.rows, &{&1.span.span_id, &1.depth, &1.service}) == [
+             {"root", 0, "contract-svc"},
+             {"child", 1, "contract-svc"}
+           ]
+  end
+
+  test "expanded detail values are sorted, formatted once, and bounded" do
+    long_value = String.duplicate("x", 1_000)
+    span = %{span("root", nil, 100) | attributes: %{"z" => [1, 2], "a" => long_value}}
+    detail = Components.prepare_span_detail(span)
+
+    assert Enum.map(detail.attributes, & &1.key) == ["a", "z"]
+    assert [%{value: truncated}, %{value: "[1, 2]"}] = detail.attributes
+    assert String.length(truncated) == 501
+    assert String.ends_with?(truncated, "…")
+  end
+
+  test "prepared trace and tail rows render without presentation work in the template" do
+    span = span("root", nil, 1_700_000_000_000_000_000)
+    trace = Components.prepare_trace([span])
+    details = %{span.span_id => Components.prepare_span_detail(span)}
+
+    trace_html =
+      render_component(&Components.trace_tab/1,
+        trace: trace,
+        trace_id_input: span.trace_id,
+        trace_id: span.trace_id,
+        expanded_spans: MapSet.new([span.span_id]),
+        expanded_span_details: details
+      )
+
+    assert trace_html =~ "contract-svc"
+    assert trace_html =~ span.span_id
+
+    row = Components.prepare_span_row(span)
+
+    tail_html =
+      render_component(&Components.tail_tab/1,
+        entries: [{"tail-row", row}],
+        count: 1,
+        subscribed: true
+      )
+
+    assert tail_html =~ ~s(id="tail-entries")
+    assert tail_html =~ ~s(id="tail-row")
+    assert tail_html =~ "Streaming... (1 spans)"
+  end
+
+  defp span(span_id, parent_span_id, start_time) do
+    %TimelessTraces.Span{
+      trace_id: "00112233445566778899aabbccddeeff",
+      span_id: span_id,
+      parent_span_id: parent_span_id,
+      name: span_id,
+      kind: :server,
+      start_time: start_time,
+      end_time: start_time + 10,
+      duration_ns: 10,
+      status: :ok,
+      attributes: %{},
+      events: [],
+      resource: %{"service.name" => "contract-svc"},
+      instrumentation_scope: %{}
+    }
+  end
 end
