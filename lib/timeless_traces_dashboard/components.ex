@@ -432,7 +432,7 @@ defmodule TimelessTracesDashboard.Components do
         </div>
       </div>
 
-      <div :if={@trace_id && @trace.count == 0 and not @loading} class="card">
+      <div :if={@trace_id != nil and @trace.count == 0 and not @loading} class="card">
         <div class="card-body text-center text-muted py-4">
           No spans found for this trace.
         </div>

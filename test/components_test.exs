@@ -121,6 +121,42 @@ defmodule TimelessTracesDashboard.ComponentsTest do
     assert tail_html =~ "Streaming... (1 spans)"
   end
 
+  test "the trace tab renders before a trace is chosen and when none is found" do
+    empty = Components.prepare_trace([])
+
+    # The tab opens with no trace chosen: `nil && …` was nil, and `nil and …`
+    # raised BadBooleanError, a 500 on every visit to the tab.
+    unchosen =
+      render_component(&Components.trace_tab/1,
+        trace: empty,
+        trace_id_input: "",
+        trace_id: nil
+      )
+
+    assert unchosen =~ "Enter trace ID"
+    refute unchosen =~ "No spans found for this trace."
+
+    missing =
+      render_component(&Components.trace_tab/1,
+        trace: empty,
+        trace_id_input: "ffffffffffffffffffffffffffffffff",
+        trace_id: "ffffffffffffffffffffffffffffffff"
+      )
+
+    assert missing =~ "No spans found for this trace."
+
+    loading =
+      render_component(&Components.trace_tab/1,
+        trace: empty,
+        loading: true,
+        trace_id_input: "ffffffffffffffffffffffffffffffff",
+        trace_id: "ffffffffffffffffffffffffffffffff"
+      )
+
+    assert loading =~ "Loading trace..."
+    refute loading =~ "No spans found for this trace."
+  end
+
   defp span(span_id, parent_span_id, start_time) do
     %TimelessTraces.Span{
       trace_id: "00112233445566778899aabbccddeeff",
