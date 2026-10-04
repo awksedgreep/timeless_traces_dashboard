@@ -1,7 +1,7 @@
 defmodule TimelessTracesDashboard.MixProject do
   use Mix.Project
 
-  @version "0.3.22"
+  @version "0.3.23"
   @source_url "https://github.com/awksedgreep/timeless_traces_dashboard"
 
   def project do
